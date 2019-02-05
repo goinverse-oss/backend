@@ -89,7 +89,7 @@
         "s3:*"
       ],
       "Resource": [
-        "arn:aws:s3:::backend-deployment-bucket/*"
+        "arn:aws:s3:::*/*"
       ]
     },
     {
