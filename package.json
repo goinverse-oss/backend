@@ -3,7 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy": "npm run sls deploy",
+    "sls": "assume-role theliturgists-deploy serverless"
   },
   "dependencies": {
     "express": "^4.16.4",

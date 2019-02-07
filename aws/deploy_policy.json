@@ -89,6 +89,7 @@
         "s3:*"
       ],
       "Resource": [
+        "arn:aws:s3:::*",
         "arn:aws:s3:::*/*"
       ]
     },
@@ -135,6 +136,36 @@
       "Resource": [
         "*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+          "route53:ChangeResourceRecordSets",
+          "route53:ListHostedZones",
+          "route53:ListResourceRecordSets"
+      ],
+      "Resource": "*"
+    },
+    {
+        "Effect": "Allow",
+        "Action": [
+            "acm:AddTagsToCertificate",
+            "acm:RequestCertificate",
+            "acm:DescribeCertificate",
+            "acm:DeleteCertificate"
+        ],
+        "Resource": "*"
+    },
+    {
+        "Effect": "Allow",
+        "Action": [
+            "apigateway:GET",
+            "apigateway:POST",
+            "apigateway:DELETE"
+        ],
+        "Resource": [
+          "arn:aws:apigateway:*::/domainnames"
+        ]
     }
   ]
 }
