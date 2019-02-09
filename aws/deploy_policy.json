@@ -164,8 +164,16 @@
             "apigateway:DELETE"
         ],
         "Resource": [
-          "arn:aws:apigateway:*::/domainnames"
+          "arn:aws:apigateway:*::/domainnames",
+          "arn:aws:apigateway:*::/domainnames/*"
         ]
+    },
+    {
+        "Effect": "Allow",
+        "Action": [
+            "cloudfront:UpdateDistribution"
+        ],
+        "Resource": "*"
     }
   ]
 }

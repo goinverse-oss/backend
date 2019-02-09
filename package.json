@@ -4,11 +4,19 @@
   "private": true,
   "scripts": {
     "lint": "eslint",
-    "deploy": "npm run sls deploy",
-    "sls": "assume-role theliturgists-deploy serverless"
+    "deploy": "sls deploy",
+    "auth-deploy": "npm run auth-sls deploy",
+    "auth-sls": "assume-role theliturgists-deploy serverless"
   },
   "dependencies": {
+    "aws-param-store": "^2.1.0",
+    "aws-sdk": "^2.399.0",
+    "axios": "^0.18.0",
+    "body-parser": "^1.18.3",
     "express": "^4.16.4",
+    "http-proxy-middleware": "^0.19.1",
+    "node-http-proxy-json": "^0.1.6",
+    "qs": "^6.6.0",
     "serverless": "^1.36.3",
     "serverless-http": "^1.9.0"
   },
