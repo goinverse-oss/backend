@@ -34,8 +34,8 @@ async function init() {
       ...creds,
     };
     const body = qs.stringify(obj);
-    const patreonRes = await axios.post(url, body);
-    res.json(patreonRes.data);
+    const patreonRes = await axios.post(url, body, { validateStatus: null });
+    res.status(patreonRes.status).json(patreonRes.data);
   });
 
   return app;
