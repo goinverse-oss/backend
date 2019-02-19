@@ -63,7 +63,6 @@ async function filterData(contentType, contentfulData, patreonToken) {
       const podcast = podcasts[episode.fields.podcast.sys.id];
       return (
         _.get(podcast.fields, 'minimumPledgeDollars', null) === null
-          || episode.fields.isFreePreview
           || (
             pledge
               && podcast.fields.minimumPledgeDollars * 100 <= pledge.amount_cents
@@ -74,9 +73,7 @@ async function filterData(contentType, contentfulData, patreonToken) {
     const hasMeditations = (
       pledge && /Meditations/i.test(pledge.reward.title)
     );
-    canAccess = meditation => (
-      meditation.fields.isFreePreview || hasMeditations
-    );
+    canAccess = () => hasMeditations;
   } else {
     return contentfulData;
   }
@@ -88,12 +85,17 @@ async function filterData(contentType, contentfulData, patreonToken) {
         if (canAccess(item)) {
           return item;
         }
-        // Without this, the app will render this
-        return _.set(
-          _.omit(item, 'fields.mediaUrl'),
-          'fields.patronsOnly',
-          true,
-        );
+
+        const filteredItem = item.fields.isFreePreview
+          ? item
+          : _.omit(item, 'fields.mediaUrl');
+
+        // `patronsOnly` tells the app that the user can't access this item
+        // because they're not a patron or haven't pledged enough.
+        // `isFreePreview` tells the app to put a little "Free Preview"
+        // label on items that wouldn't have been ordinarily accessible but are
+        // given as preview media.
+        return _.set(filteredItem, 'fields.patronsOnly', true);
       },
     ),
   };
