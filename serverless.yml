@@ -29,6 +29,7 @@ functions:
     handler: index.handler
     events:
       - http: POST /patreon/validate
+      - http: GET /contentful/{proxy+}
 
 custom:
   stage: ${opt:stage, self:provider.stage}
