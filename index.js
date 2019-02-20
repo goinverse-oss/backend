@@ -42,12 +42,15 @@ async function getCreds() {
 const CAMPAIGN_URL = 'https://www.patreon.com/bdhtest';
 
 async function filterData(contentType, contentfulData, patreonToken) {
+  let user = null;
   let pledge = null;
 
   if (patreonToken) {
     const client = patreonAPI(patreonToken);
-    const user = await client('/current_user?includes=pledges');
-    pledge = _.find(user.pledges, p => (p.url === CAMPAIGN_URL));
+    const { store, rawJson } = await client('/current_user?includes=pledges');
+    user = store.find('user', rawJson.data.id);
+
+    pledge = _.find(user.pledges, p => (p.reward.campaign.url === CAMPAIGN_URL));
   }
 
   let canAccess;
@@ -64,7 +67,7 @@ async function filterData(contentType, contentfulData, patreonToken) {
       return (
         _.get(podcast.fields, 'minimumPledgeDollars', null) === null
           || (
-            pledge
+            !!pledge
               && podcast.fields.minimumPledgeDollars * 100 <= pledge.amount_cents
           )
       );
