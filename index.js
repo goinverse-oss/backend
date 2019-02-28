@@ -78,7 +78,7 @@ async function filterData(contentType, contentfulData, patreonToken) {
     );
     canAccess = () => hasMeditations;
   } else {
-    return contentfulData;
+    canAccess = () => true;
   }
 
   return {
@@ -86,7 +86,7 @@ async function filterData(contentType, contentfulData, patreonToken) {
     items: contentfulData.items.map(
       (item) => {
         if (canAccess(item)) {
-          return item;
+          return _.set(item, 'fields.patronsOnly', false);
         }
 
         const filteredItem = item.fields.isFreePreview
