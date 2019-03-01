@@ -91,7 +91,7 @@ async function filterData(contentType, contentfulData, patreonToken) {
 
         const filteredItem = item.fields.isFreePreview
           ? item
-          : _.omit(item, 'fields.mediaUrl');
+          : _.omit(item, ['fields.media', 'fields.mediaUrl']);
 
         // `patronsOnly` tells the app that the user can't access this item
         // because they're not a patron or haven't pledged enough.
