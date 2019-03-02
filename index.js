@@ -41,7 +41,7 @@ async function getCreds() {
 
 const CAMPAIGN_URL = 'https://www.patreon.com/bdhtest';
 
-async function filterData(contentType, contentfulData, patreonToken) {
+async function filterData(contentfulData, patreonToken) {
   let user = null;
   let pledge = null;
 
@@ -53,17 +53,11 @@ async function filterData(contentType, contentfulData, patreonToken) {
     pledge = _.find(user.pledges, p => (p.reward.campaign.url === CAMPAIGN_URL));
   }
 
-  let canAccess;
-  if (contentType === 'podcastEpisode') {
-    // podcasts are included; pull them out by ID first
-    const podcasts = _.fromPairs(
-      contentfulData.includes.Entry.filter(
-        entry => entry.sys.contentType.sys.id === 'podcast',
-      ).map(podcast => ([podcast.sys.id, podcast])),
-    );
-
-    canAccess = (episode) => {
-      const podcast = podcasts[episode.fields.podcast.sys.id];
+  function canAccess(item, podcasts) {
+    const contentType = item.sys.contentType.sys.id;
+    console.log(`contentType: ${contentType}`);
+    if (contentType === 'podcastEpisode') {
+      const podcast = podcasts[item.fields.podcast.sys.id];
       return (
         _.get(podcast.fields, 'minimumPledgeDollars', null) === null
           || (
@@ -71,21 +65,27 @@ async function filterData(contentType, contentfulData, patreonToken) {
               && podcast.fields.minimumPledgeDollars * 100 <= pledge.amount_cents
           )
       );
-    };
-  } else if (contentType === 'meditation') {
-    const hasMeditations = (
-      pledge && /Meditations/i.test(pledge.reward.title)
-    );
-    canAccess = () => hasMeditations;
-  } else {
-    canAccess = () => true;
+    }
+    if (contentType === 'meditation') {
+      return (
+        pledge && /Meditations/i.test(pledge.reward.title)
+      );
+    }
+    return true;
   }
+
+  // podcasts are included; pull them out by ID first
+  const podcasts = _.fromPairs(
+    contentfulData.includes.Entry.filter(
+      entry => entry.sys.contentType.sys.id === 'podcast',
+    ).map(podcast => ([podcast.sys.id, podcast])),
+  );
 
   return {
     ...contentfulData,
     items: contentfulData.items.map(
       (item) => {
-        if (canAccess(item)) {
+        if (canAccess(item, podcasts)) {
           return _.set(item, 'fields.patronsOnly', false);
         }
 
@@ -145,7 +145,7 @@ async function init() {
     const { status } = contentfulRes;
     let { data } = contentfulRes;
     if (status >= 200 && status < 300) {
-      data = await filterData(req.query.content_type, data, patreonToken);
+      data = await filterData(data, patreonToken);
     }
     res.status(status).json(data);
   });
