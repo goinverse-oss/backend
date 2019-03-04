@@ -9,6 +9,7 @@
     "auth-sls": "assume-role theliturgists-deploy serverless"
   },
   "dependencies": {
+    "@sentry/node": "^4.6.4",
     "aws-param-store": "^2.1.0",
     "aws-sdk": "^2.399.0",
     "axios": "^0.18.0",
@@ -16,6 +17,7 @@
     "express": "^4.16.4",
     "helmet": "^3.15.1",
     "lodash": "^4.17.11",
+    "morgan": "^1.9.1",
     "patreon": "^0.4.1",
     "qs": "^6.6.0",
     "serverless": "^1.36.3",
