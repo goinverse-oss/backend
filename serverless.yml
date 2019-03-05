@@ -29,6 +29,7 @@ functions:
     handler: index.handler
     timeout: 30
     events:
+      - http: GET /patreon/authorize
       - http: POST /patreon/validate
       - http: GET /contentful/{proxy+}
 

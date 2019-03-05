@@ -117,7 +117,9 @@ function wrapAsync(fn) {
   );
 }
 
-const patreonTokenUrl = 'https://www.patreon.com/api/oauth2/token';
+const patreonBaseUrl = 'https://www.patreon.com/';
+const patreonAuthUrl = `${patreonBaseUrl}/oauth2/authorize`;
+const patreonTokenUrl = `${patreonBaseUrl}/api/oauth2/token`;
 
 async function init() {
   const { patreon, contentful, sentry } = await getCreds();
@@ -135,6 +137,18 @@ async function init() {
 
   app.use(morgan('combined'));
   app.use(helmet());
+
+  app.get(
+    '*/patreon/authorize',
+    (req, res) => {
+      const obj = {
+        ...req.query,
+        client_id: patreon.client_id,
+      };
+      const query = qs.stringify(obj);
+      res.status(302).redirect(`${patreonAuthUrl}?${query}`);
+    },
+  );
 
   app.post(
     '*/patreon/validate',
