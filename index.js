@@ -12,39 +12,32 @@ const { patreon: patreonAPI } = require('patreon');
 
 const stage = process.env.SLS_STAGE;
 
-async function getCreds() {
+const credSpecs = {
+  patreon: {
+    client_id: `/${stage}/PATREON_CLIENT_ID`,
+    client_secret: `/${stage}/PATREON_CLIENT_SECRET`,
+    campaign_url: `/${stage}/PATREON_CAMPAIGN_URL`,
+  },
+  contentful: {
+    space: `/${stage}/CONTENTFUL_SPACE`,
+    environment: `/${stage}/CONTENTFUL_ENVIRONMENT`,
+    accessToken: `/${stage}/CONTENTFUL_ACCESS_TOKEN`,
+  },
+  sentry: {
+    dsn: `/${stage}/SENTRY_DSN`,
+  },
+};
+
+async function getCreds(name) {
+  const credSpec = credSpecs[name];
   const opts = { region: process.env.AWS_REGION };
-  const names = {
-    patreon: {
-      client_id: `/${stage}/PATREON_CLIENT_ID`,
-      client_secret: `/${stage}/PATREON_CLIENT_SECRET`,
-    },
-    contentful: {
-      space: `/${stage}/CONTENTFUL_SPACE`,
-      environment: `/${stage}/CONTENTFUL_ENVIRONMENT`,
-      accessToken: `/${stage}/CONTENTFUL_ACCESS_TOKEN`,
-    },
-    sentry: {
-      dsn: `/${stage}/SENTRY_DSN`,
-    },
-  };
-
-  // Fetch all values asynchronously
-  const paths = _.flatMap(
-    _.keys(names),
-    ns => _.keys(names[ns]).map(credName => `${ns}.${credName}`),
-  );
+  const keys = _.keys(credSpec);
   const params = await Promise.all(
-    paths.map(path => awsParamStore.getParameter(
-      _.get(names, path),
-      opts,
-    )),
+    keys.map(key => awsParamStore.getParameter(credSpec[key], opts)),
   );
-  _.each(paths, (path, i) => _.set(names, path, params[i].Value));
-  return names;
+  const values = _.map(params, 'Value');
+  return _.zipObject(keys, values);
 }
-
-const CAMPAIGN_URL = 'https://www.patreon.com/bdhtest';
 
 function canAccess(pledge, item, podcasts) {
   const contentType = item.sys.contentType.sys.id;
@@ -74,7 +67,7 @@ async function filterData(contentfulData, patreon) {
     const { store, rawJson } = await client('/current_user?includes=pledges');
     const user = store.find('user', rawJson.data.id);
 
-    pledge = _.find(user.pledges, p => (p.reward.campaign.url === CAMPAIGN_URL));
+    pledge = _.find(user.pledges, p => (p.reward.campaign.url === patreon.campaign_url));
   }
 
   // podcasts are included; pull them out by ID first
@@ -122,7 +115,7 @@ const patreonAuthUrl = `${patreonBaseUrl}/oauth2/authorize`;
 const patreonTokenUrl = `${patreonBaseUrl}/api/oauth2/token`;
 
 async function init() {
-  const { patreon, contentful, sentry } = await getCreds();
+  const sentry = await getCreds('sentry');
 
   Sentry.init(sentry);
   Sentry.configureScope((scope) => {
@@ -138,28 +131,36 @@ async function init() {
   app.use(morgan('combined'));
   app.use(helmet());
 
+  // Initialize OAuth2 flow, redirecting to Patreon with client_id
   app.get(
     '*/patreon/authorize',
-    (req, res) => {
-      const obj = {
-        ...req.query,
-        client_id: patreon.client_id,
-      };
-      const query = qs.stringify(obj);
-      res.status(302).redirect(`${patreonAuthUrl}?${query}`);
-    },
+    wrapAsync(
+      async (req, res) => {
+        const patreon = await getCreds('patreon');
+
+        const obj = {
+          ...req.query,
+          client_id: patreon.client_id,
+        };
+        const query = qs.stringify(obj);
+        res.status(302).redirect(`${patreonAuthUrl}?${query}`);
+      },
+    ),
   );
 
+  // Send code to Patreon and receive token
   app.post(
     '*/patreon/validate',
     bodyParser.urlencoded({ extended: true }),
     wrapAsync(
       async (req, res) => {
+        const patreon = await getCreds('patreon');
+
         const url = patreonTokenUrl;
 
         const obj = {
           ...req.body,
-          ...patreon,
+          ..._.pick(patreon, ['client_id', 'client_secret']),
         };
         const body = qs.stringify(obj);
         const patreonRes = await axios.post(url, body, { validateStatus: null });
@@ -170,6 +171,8 @@ async function init() {
 
   app.get('*/contentful/*', wrapAsync(
     async (req, res) => {
+      const contentful = await getCreds('contentful');
+
       Sentry.addBreadcrumb({ message: 'API request', data: req.path });
       const path = req.path
         .replace(new RegExp(`^(/${stage})?/contentful`), '')
@@ -214,6 +217,7 @@ async function init() {
   ));
 
   app.use(
+    // eslint-disable-next-line
     async (error, req, res, next) => {
       console.error('Uncaught error:', error);
 
