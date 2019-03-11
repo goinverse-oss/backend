@@ -172,6 +172,7 @@ async function init() {
   app.get('*/contentful/*', wrapAsync(
     async (req, res) => {
       const contentful = await getCreds('contentful');
+      const { campaign_url: patreonCampaignUrl } = await getCreds('patreon');
 
       Sentry.addBreadcrumb({ message: 'API request', data: req.path });
       const path = req.path
@@ -188,17 +189,18 @@ async function init() {
           authorization: `Bearer ${contentful.accessToken}`,
         },
       });
-      const patreonAuth = {
+      const patreon = {
         token: _.get(req.headers, 'x-theliturgists-patreon-token'),
+        campaign_url: patreonCampaignUrl,
       };
       const { status } = contentfulRes;
       let { data } = contentfulRes;
       Sentry.addBreadcrumb({ message: 'Got contentful response', data });
 
       let patreonError;
-      if (status >= 200 && status < 300) {
+      if (status >= 200 && status < 400) {
         try {
-          data = await filterData(data, patreonAuth);
+          data = await filterData(data, patreon);
         } catch (e) {
           patreonError = e.error;
         }
