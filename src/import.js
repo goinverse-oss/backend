@@ -7,15 +7,6 @@ const ProgressBar = require('progress');
 /* eslint-disable no-restricted-syntax */
 /* eslint-disable no-await-in-loop */
 
-/*
- * TODO:
- * 1) Fetch all podcasts from Contentful that have a feed URL
- * 2) Fetch all seasons and episodes from Contentful
- * 3) Fetch RSS feeds from Podbean
- * 4) Create any seasons that don't already exist in Contentful
- * 5) Create any episodes that don't already exist in Contentful
- */
-
 async function getPodcasts(environment) {
   const response = await environment.getEntries({
     content_type: 'podcast',
@@ -84,24 +75,95 @@ function fixDuration(duration) {
   return paddedNums.join(':');
 }
 
+class ContentfulCache {
+  constructor(environment) {
+    this.environment = environment;
+    this.cache = {};
+    this.pks = {
+      contributor: 'name',
+      tag: 'name',
+    };
+  }
+
+  _getPk(contentType) {
+    return _.get(this.pks, contentType, 'title');
+  }
+
+  async _initContentType(contentType) {
+    const pk = this._getPk(contentType);
+    const data = await this.environment.getEntries({
+      content_type: contentType,
+    });
+    this.cache[contentType] = _.keyBy(data.items, `fields.${pk}.en-US`);
+  }
+
+  async getOrCreate(contentType, pkValue) {
+    if (!_.has(this.cache, contentType)) {
+      await this._initContentType(contentType);
+    }
+
+    if (_.has(this.cache, [contentType, pkValue])) {
+      return this.cache[contentType][pkValue];
+    }
+
+    const pk = this._getPk(contentType);
+
+    const entry = await this.environment.createEntry(
+      contentType,
+      {
+        fields: {
+          [pk]: withType(pkValue),
+        },
+      },
+    );
+    this.cache[contentType][pkValue] = entry;
+    await entry.publish();
+    return entry;
+  }
+}
+
 async function syncEpisode(
-  environment, podcast, seasons, episodesById, rssItem,
+  environment, cache, podcast, seasons, episodesById, rssItem,
 ) {
   const existingEpisode = _.get(episodesById, rssItem.guid);
 
+  const description = (
+    rssItem.description
+    || _.get(rssItem, 'content.encoded')
+    || rssItem.content
+  );
   const episodeJson = {
     fields: {
       podbeanEpisodeId: withType(rssItem.guid),
       title: withType(rssItem.title),
-      description: withType((
-        rssItem.description
-        || _.get(rssItem, 'content.encoded')
-        || rssItem.content
-      )),
+      description: withType(description),
       publishedAt: withType(rssItem.isoDate),
       podcast: withType(makeLink(podcast)),
     },
   };
+
+  // Grab contributors and tags from description,
+  // create them in Contentful if necessary, and
+  // set them on the episode.
+  const lines = description.match(/[^\r\n]+/g);
+  for (const line of lines) {
+    // look for "contributors:" or "tags:" followed by a
+    // comma-separated list of names.
+    const match = line.match(
+      /(contributors|tags):([^,]+(?:,[^,]+)*);/,
+    );
+    if (match) {
+      const [label, valuesCsv] = match.slice(1);
+      const contentType = label.replace(/s$/, '');
+      const values = valuesCsv.split(',');
+      const links = [];
+      for (const value of values) {
+        const entry = await cache.getOrCreate(contentType, value);
+        links.push(makeLink(entry));
+      }
+      episodeJson.fields[label] = withType(links);
+    }
+  }
 
   function setIfPresent(key, path) {
     const value = _.get(rssItem, path);
@@ -158,7 +220,7 @@ function getSeasonNumbersFromFeed(feed) {
   );
 }
 
-async function syncPodcast(environment, podcast) {
+async function syncPodcast(environment, cache, podcast) {
   const feedUrl = `${podcast.fields.feedUrl['en-US']}`;
   console.log(`Parsing feed from ${feedUrl}`);
   const feed = await parseFeed(feedUrl);
@@ -189,7 +251,7 @@ async function syncPodcast(environment, podcast) {
   );
   for (const item of feed.items) {
     await syncEpisode(
-      environment, podcast, seasons, episodesById, item,
+      environment, cache, podcast, seasons, episodesById, item,
     );
     bar.tick();
   }
@@ -200,11 +262,13 @@ async function syncPodcasts(accessToken, spaceId, environmentId) {
   const space = await contentful.getSpace(spaceId);
   const environment = await space.getEnvironment(environmentId);
 
+  const cache = new ContentfulCache(environment);
+
   console.log('Getting public podcasts...');
   const podcasts = await getPodcasts(environment);
   console.log(`Syncing ${podcasts.length} public podcasts...`);
   for (const podcast of podcasts) {
-    await syncPodcast(environment, podcast);
+    await syncPodcast(environment, cache, podcast);
   }
 }
 
