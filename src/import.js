@@ -125,7 +125,7 @@ class ContentfulCache {
 async function syncEpisode(
   environment, cache, podcast, seasons, episodesById, rssItem,
 ) {
-  const existingEpisode = _.get(episodesById, rssItem.guid);
+  let existingEpisode = _.get(episodesById, rssItem.guid);
 
   const description = (
     rssItem.description
@@ -204,7 +204,7 @@ async function syncEpisode(
 
   if (!_.isEqual(existingEpisode.fields, episodeJson.fields)) {
     existingEpisode.fields = episodeJson.fields;
-    await existingEpisode.update();
+    existingEpisode = await existingEpisode.update();
     await existingEpisode.publish();
   }
 
