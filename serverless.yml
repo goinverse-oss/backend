@@ -32,6 +32,16 @@ functions:
       - http: GET /patreon/authorize
       - http: POST /patreon/validate
       - http: GET /contentful/{proxy+}
+  sync:
+    handler: src/sync.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: cron(0 12 * * ? *)   # daily, 8AM EDT
+          enabled: ${self:custom.syncEnabled.${self:custom.stage}}
 
 custom:
   stage: ${opt:stage, self:provider.stage}
+  syncEnabled:
+    dev: false
+    staging: true

@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "import": "node ./src/import.js",
+    "sync": "node ./src/sync.js",
     "lint": "eslint",
     "deploy": "sls deploy",
     "auth-deploy": "npm run auth-sls deploy",
