@@ -2,7 +2,6 @@ const serverless = require('serverless-http');
 const bodyParser = require('body-parser');
 const express = require('express');
 const qs = require('qs');
-const awsParamStore = require('aws-param-store');
 const axios = require('axios');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -10,34 +9,9 @@ const _ = require('lodash');
 const Sentry = require('@sentry/node');
 const { patreon: patreonAPI } = require('patreon');
 
+const { getCreds } = require('./src/creds');
+
 const stage = process.env.SLS_STAGE;
-
-const credSpecs = {
-  patreon: {
-    client_id: `/${stage}/PATREON_CLIENT_ID`,
-    client_secret: `/${stage}/PATREON_CLIENT_SECRET`,
-    campaign_url: `/${stage}/PATREON_CAMPAIGN_URL`,
-  },
-  contentful: {
-    space: `/${stage}/CONTENTFUL_SPACE`,
-    environment: `/${stage}/CONTENTFUL_ENVIRONMENT`,
-    accessToken: `/${stage}/CONTENTFUL_ACCESS_TOKEN`,
-  },
-  sentry: {
-    dsn: `/${stage}/SENTRY_DSN`,
-  },
-};
-
-async function getCreds(name) {
-  const credSpec = credSpecs[name];
-  const opts = { region: process.env.AWS_REGION };
-  const keys = _.keys(credSpec);
-  const params = await Promise.all(
-    keys.map(key => awsParamStore.getParameter(credSpec[key], opts)),
-  );
-  const values = _.map(params, 'Value');
-  return _.zipObject(keys, values);
-}
 
 function canAccess(pledge, item, podcasts) {
   const contentType = item.sys.contentType.sys.id;

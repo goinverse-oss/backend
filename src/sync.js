@@ -3,6 +3,9 @@ const { createClient } = require('contentful-management');
 const Parser = require('rss-parser');
 const yargs = require('yargs');
 const ProgressBar = require('progress');
+const Sentry = require('@sentry/node');
+
+const { getCreds } = require('./creds');
 
 /* eslint-disable no-restricted-syntax */
 /* eslint-disable no-await-in-loop */
@@ -122,11 +125,20 @@ class ContentfulCache {
   }
 }
 
+function logProgress(progress, msg) {
+  if (progress.stream.clearLine) {
+    progress.interrupt(msg);
+  } else {
+    console.log(msg);
+  }
+}
+
 async function syncEpisode(
-  environment, cache, podcast, seasons, episodesById, rssItem,
+  progress, environment, cache, podcast, seasons, episodesById, rssItem,
 ) {
   let existingEpisode = _.get(episodesById, rssItem.guid);
 
+  const { title } = rssItem;
   const description = (
     rssItem.description
     || _.get(rssItem, 'content.encoded')
@@ -135,7 +147,7 @@ async function syncEpisode(
   const episodeJson = {
     fields: {
       podbeanEpisodeId: withType(rssItem.guid),
-      title: withType(rssItem.title),
+      title: withType(title),
       description: withType(description),
       publishedAt: withType(rssItem.isoDate),
       podcast: withType(makeLink(podcast)),
@@ -195,20 +207,24 @@ async function syncEpisode(
   }
 
   if (!existingEpisode) {
+    logProgress(progress, `Creating episode: "${title}"`);
     const episode = await environment.createEntry(
       'podcastEpisode', episodeJson,
     );
     await episode.publish();
-    return episode;
+    return { episode, status: 'created' };
   }
 
+  let status = 'unchanged';
   if (!_.isEqual(existingEpisode.fields, episodeJson.fields)) {
+    logProgress(progress, `Updating episode: "${title}"`);
+    status = 'updated';
     existingEpisode.fields = episodeJson.fields;
     existingEpisode = await existingEpisode.update();
     await existingEpisode.publish();
   }
 
-  return existingEpisode;
+  return { episode: existingEpisode, status };
 }
 
 function getSeasonNumbersFromFeed(feed) {
@@ -221,7 +237,8 @@ function getSeasonNumbersFromFeed(feed) {
 }
 
 async function syncPodcast(environment, cache, podcast) {
-  const feedUrl = `${podcast.fields.feedUrl['en-US']}`;
+  const feedUrl = podcast.fields.feedUrl['en-US'];
+
   console.log(`Parsing feed from ${feedUrl}`);
   const feed = await parseFeed(feedUrl);
 
@@ -241,19 +258,32 @@ async function syncPodcast(environment, cache, podcast) {
       );
       bar.tick();
     }
+    console.log(`Created ${newSeasonNumbers.length} seasons`);
   }
 
   const episodes = await getEpisodes(environment, podcast);
   const episodesById = _.keyBy(episodes, 'fields.podbeanEpisodeId.en-US');
+  const counts = {
+    updated: 0,
+    created: 0,
+    unchanged: 0,
+  };
   const bar = new ProgressBar(
-    'Syncing episodes: :current/:total :bar',
-    { total: feed.items.length },
+    'Syncing episodes: [:bar] :current/:total (:created created, :updated updated)',
+    {
+      total: feed.items.length,
+      incomplete: ' ',
+      width: 20,
+      ...counts,
+    },
   );
   for (const item of feed.items) {
-    await syncEpisode(
-      environment, cache, podcast, seasons, episodesById, item,
+    const { status } = await syncEpisode(
+      bar, environment, cache, podcast, seasons, episodesById, item,
     );
-    bar.tick();
+
+    counts[status] += 1;
+    bar.tick(counts);
   }
 }
 
@@ -298,3 +328,25 @@ if (require.main === module) {
       process.exit(1);
     });
 }
+
+module.exports.handler = async () => {
+  const sentry = await getCreds('sentry');
+  Sentry.init(sentry);
+  Sentry.configureScope((scope) => {
+    scope.setTag('stage', process.env.SLS_STAGE);
+  });
+
+  const contentful = await getCreds('contentful');
+  const contentfulManagement = await getCreds('contentfulManagement');
+  return syncPodcasts(
+    contentfulManagement.accessToken,
+    contentful.space,
+    contentful.environment,
+  )
+    .then(() => console.log('Done.'))
+    .catch((err) => {
+      console.error(err);
+      Sentry.captureException(err);
+      throw err;
+    });
+};
