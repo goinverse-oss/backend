@@ -140,55 +140,63 @@
     {
       "Effect": "Allow",
       "Action": [
-          "route53:ChangeResourceRecordSets",
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets"
+        "route53:ChangeResourceRecordSets",
+        "route53:ListHostedZones",
+        "route53:ListResourceRecordSets"
       ],
       "Resource": "*"
     },
     {
-        "Effect": "Allow",
-        "Action": [
-            "acm:AddTagsToCertificate",
-            "acm:RequestCertificate",
-            "acm:DescribeCertificate",
-            "acm:DeleteCertificate"
-        ],
-        "Resource": "*"
+      "Effect": "Allow",
+      "Action": [
+        "acm:AddTagsToCertificate",
+        "acm:RequestCertificate",
+        "acm:DescribeCertificate",
+        "acm:DeleteCertificate"
+      ],
+      "Resource": "*"
     },
     {
-        "Effect": "Allow",
-        "Action": [
-            "apigateway:GET",
-            "apigateway:POST",
-            "apigateway:DELETE"
-        ],
-        "Resource": [
-          "arn:aws:apigateway:*::/domainnames",
-          "arn:aws:apigateway:*::/domainnames/*"
-        ]
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:GET",
+        "apigateway:POST",
+        "apigateway:DELETE"
+      ],
+      "Resource": [
+        "arn:aws:apigateway:*::/domainnames",
+        "arn:aws:apigateway:*::/domainnames/*"
+      ]
     },
     {
-        "Effect": "Allow",
-        "Action": [
-            "cloudfront:UpdateDistribution"
-        ],
-        "Resource": "*"
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:UpdateDistribution"
+      ],
+      "Resource": "*"
     },
     {
       "Action": [
-          "ssm:DescribeParameters"
+        "ssm:DescribeParameters"
       ],
       "Resource": "*",
       "Effect": "Allow"
     },
     {
-        "Action": [
-            "ssm:GetParameter",
-            "ssm:GetParameters"
-        ],
-        "Resource": "arn:aws:ssm:us-east-1:682897274253:parameter/dev/*",
-        "Effect": "Allow"
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:682897274253:parameter/dev/*",
+      "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "cloudwatch:*",
+        "events:*"
+      ],
+      "Resource": "*",
+      "Effect": "Allow"
     }
   ]
 }

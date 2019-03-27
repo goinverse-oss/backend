@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "sync": "node ./src/sync.js",
     "lint": "eslint",
     "deploy": "sls deploy",
     "auth-deploy": "npm run auth-sls deploy",
@@ -14,14 +15,18 @@
     "aws-sdk": "^2.399.0",
     "axios": "^0.18.0",
     "body-parser": "^1.18.3",
+    "contentful-management": "^5.7.0",
     "express": "^4.16.4",
     "helmet": "^3.15.1",
     "lodash": "^4.17.11",
     "morgan": "^1.9.1",
     "patreon": "^0.4.1",
+    "progress": "^2.0.3",
     "qs": "^6.6.0",
+    "rss-parser": "^3.7.0",
     "serverless": "^1.36.3",
-    "serverless-http": "^1.9.0"
+    "serverless-http": "^1.9.0",
+    "yargs": "^13.2.2"
   },
   "devDependencies": {
     "eslint": "^5.13.0",
