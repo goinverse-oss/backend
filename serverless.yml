@@ -1,4 +1,4 @@
-service: theliturgists-backend
+service: theliturgists-backend-${self:custom.namespace}
 
 provider:
   name: aws
@@ -41,6 +41,7 @@ functions:
           enabled: ${self:custom.syncEnabled.${self:custom.stage}}
 
 custom:
+  namespace: ${env:SLS_NAMESPACE, env:USER}
   stage: ${opt:stage, self:provider.stage}
   syncEnabled:
     dev: false
