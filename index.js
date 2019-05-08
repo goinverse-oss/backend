@@ -25,7 +25,10 @@ function canAccess(pledge, item, podcasts) {
         )
     );
   }
-  if (contentType === 'meditation') {
+  if (contentType === 'meditation' || contentType === 'liturgyItem') {
+    // Patrons with the 'Master Meditations' reward tier
+    // get access to both Meditations and Liturgies
+    // in addition to patrons-only podcasts.
     return (
       pledge && /Meditations/i.test(pledge.reward.title)
     );
