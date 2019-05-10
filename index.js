@@ -146,51 +146,74 @@ async function init() {
     ),
   );
 
-  app.get('*/contentful/*', wrapAsync(
-    async (req, res) => {
-      const contentful = await getCreds('contentful');
-      const { campaign_url: patreonCampaignUrl } = await getCreds('patreon');
+  /**
+   * Fetch contentful data, filtered by Patreon access.
+   *
+   * @param {string} path contentful resource path (after environment)
+   * @param {object} params contentful query params from request object
+   * @param {string} patreonToken patreon token from request header
+   * @returns {object} contentful API response
+   * @throws {Error} on contentful API error
+   *   error object has 'status' and 'json' fields
+   */
+  async function contentfulGet(path, params, patreonToken) {
+    const contentful = await getCreds('contentful');
+    const { space, environment } = contentful;
+    const { campaign_url: patreonCampaignUrl } = await getCreds('patreon');
 
-      Sentry.addBreadcrumb({ message: 'API request', data: req.path });
-      const path = req.path
-        .replace(new RegExp(`^(/${stage})?/contentful`), '')
-        .replace(/\/spaces\/[^/]+/, `/spaces/${contentful.space}`)
-        .replace(/\/environments\/[^/]+/, `/environments/${contentful.environment}`);
-      const host = 'https://cdn.contentful.com';
-      const url = `${host}/${path}`;
-      Sentry.addBreadcrumb({ message: 'Making contentful request', data: url });
-      const contentfulRes = await axios.get(url, {
-        params: req.query,
-        validateStatus: null,
-        headers: {
-          authorization: `Bearer ${contentful.accessToken}`,
-        },
-      });
-      const patreon = {
-        token: _.get(req.headers, 'x-theliturgists-patreon-token'),
-        campaign_url: patreonCampaignUrl,
+    const fullPath = `/spaces/${space}/environments/${environment}/${path}`;
+    const host = 'https://cdn.contentful.com';
+    const url = `${host}/${fullPath}`;
+    Sentry.addBreadcrumb({ message: 'Making contentful request', data: url });
+    const contentfulRes = await axios.get(url, {
+      params,
+      validateStatus: null,
+      headers: {
+        authorization: `Bearer ${contentful.accessToken}`,
+      },
+    });
+    const patreon = {
+      token: patreonToken,
+      campaign_url: patreonCampaignUrl,
+    };
+    const { status } = contentfulRes;
+    const { data } = contentfulRes;
+    Sentry.addBreadcrumb({ message: 'Got contentful response', data });
+
+    if (status >= 400) {
+      const e = new Error();
+      e.status = status;
+      e.json = data;
+      throw e;
+    }
+
+    try {
+      return await filterData(data, patreon);
+    } catch (e) {
+      e.json = {
+        error: (
+          'Error verifying Patreon status. '
+          + 'Please re-connect Patreon and try again.'
+        ),
       };
-      const { status } = contentfulRes;
-      let { data } = contentfulRes;
-      Sentry.addBreadcrumb({ message: 'Got contentful response', data });
+      throw e.error;
+    }
+  }
 
-      let patreonError;
-      if (status >= 200 && status < 400) {
-        try {
-          data = await filterData(data, patreon);
-        } catch (e) {
-          patreonError = e.error;
-        }
-      }
-      if (patreonError) {
-        res.status(patreonError.status).json({
-          error: (
-            'Error verifying Patreon status. '
-            + 'Please re-connect Patreon and try again.'
-          ),
-        });
-      } else {
-        res.status(status).json(data);
+  app.get('*/contentful/spaces/:space/environments/:env/*', wrapAsync(
+    async (req, res) => {
+      Sentry.addBreadcrumb({ message: 'API request', data: req.path });
+
+      const path = req.params[1];
+      const params = req.query;
+      const patreonToken = _.get(req.headers, 'x-theliturgists-patreon-token');
+
+      try {
+        const data = await contentfulGet(path, params, patreonToken);
+        res.status(200).json(data);
+      } catch (e) {
+        console.log(e);
+        res.status(e.status).json(e.json);
       }
     },
   ));
