@@ -5,6 +5,8 @@ provider:
   runtime: nodejs8.10
   stage: dev
   region: us-east-1
+  tracing:
+    lambda: true
   environment:
     SLS_STAGE: ${self:custom.stage}
   iamRoleStatements:
@@ -32,6 +34,7 @@ functions:
       - http: GET /patreon/authorize
       - http: POST /patreon/validate
       - http: GET /contentful/{proxy+}
+      - http: GET /rss/{proxy+}
   sync:
     handler: src/sync.handler
     timeout: 300
