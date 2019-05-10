@@ -13,39 +13,69 @@ const { getCreds } = require('./src/creds');
 
 const stage = process.env.SLS_STAGE;
 
+function canAccessPodcast(pledge, podcast) {
+  return (
+    _.get(podcast.fields, 'minimumPledgeDollars', null) === null
+      || (
+        !!pledge
+          && podcast.fields.minimumPledgeDollars * 100 <= pledge.amount_cents
+      )
+  );
+}
+
+function canAccessPatronMedia(pledge) {
+  // Patrons with the 'Master Meditations' reward tier
+  // get access to both Meditations and Liturgies
+  // in addition to patrons-only podcasts.
+  return pledge && /Meditations/i.test(pledge.reward.title);
+}
+
 function canAccess(pledge, item, podcasts) {
   const contentType = item.sys.contentType.sys.id;
   if (contentType === 'podcastEpisode') {
     const podcast = podcasts[item.fields.podcast.sys.id];
-    return (
-      _.get(podcast.fields, 'minimumPledgeDollars', null) === null
-        || (
-          !!pledge
-            && podcast.fields.minimumPledgeDollars * 100 <= pledge.amount_cents
-        )
-    );
+    return canAccessPodcast(pledge, podcast);
   }
   if (contentType === 'meditation' || contentType === 'liturgyItem') {
-    // Patrons with the 'Master Meditations' reward tier
-    // get access to both Meditations and Liturgies
-    // in addition to patrons-only podcasts.
-    return (
-      pledge && /Meditations/i.test(pledge.reward.title)
-    );
+    return canAccessPatronMedia(pledge);
   }
   return true;
 }
 
-async function filterData(contentfulData, patreon) {
-  let pledge = null;
-
-  if (patreon.token) {
-    const client = patreonAPI(patreon.token);
-    const { store, rawJson } = await client('/current_user?includes=pledges');
-    const user = store.find('user', rawJson.data.id);
-
-    pledge = _.find(user.pledges, p => (p.reward.campaign.url === patreon.campaign_url));
+async function getPledge(patreon) {
+  const { token, campaignUrl } = patreon;
+  if (!token || !campaignUrl) {
+    return null;
   }
+
+  const client = patreonAPI(token);
+  let resp;
+  try {
+    resp = await client('/current_user?includes=pledges');
+  } catch (patreonError) {
+    try {
+      // patreonError.response is a response object from fetch()
+      const patreonResponse = await patreonError.response.json();
+      console.log(`Patreon error: ${JSON.stringify(patreonResponse, null, 2)}`);
+    } catch (e) {
+      console.log(`Error retrieving Patreon error: ${e}`);
+    }
+
+    // no matter what the error was, deny access.
+    return null;
+  }
+
+  const { store, rawJson } = resp;
+  const user = store.find('user', rawJson.data.id);
+
+  return _.find(
+    user.pledges,
+    p => (p.reward.campaign.url === campaignUrl),
+  );
+}
+
+async function filterData(contentfulData, patreon) {
+  const pledge = getPledge(patreon);
 
   // podcasts are included; pull them out by ID first
   const podcasts = _.fromPairs(
@@ -156,15 +186,18 @@ async function init() {
    * @throws {Error} on contentful API error
    *   error object has 'status' and 'json' fields
    */
-  async function contentfulGet(path, params, patreonToken) {
+  async function contentfulGet(path, params, patreonToken, filter = true) {
     const contentful = await getCreds('contentful');
     const { space, environment } = contentful;
-    const { campaign_url: patreonCampaignUrl } = await getCreds('patreon');
+    const { campaign_url: campaignUrl } = await getCreds('patreon');
 
     const fullPath = `/spaces/${space}/environments/${environment}/${path}`;
     const host = 'https://cdn.contentful.com';
     const url = `${host}/${fullPath}`;
-    Sentry.addBreadcrumb({ message: 'Making contentful request', data: url });
+    Sentry.addBreadcrumb({
+      message: 'Making contentful request',
+      data: { url },
+    });
     const contentfulRes = await axios.get(url, {
       params,
       validateStatus: null,
@@ -174,7 +207,7 @@ async function init() {
     });
     const patreon = {
       token: patreonToken,
-      campaign_url: patreonCampaignUrl,
+      campaignUrl,
     };
     const { status } = contentfulRes;
     const { data } = contentfulRes;
@@ -185,6 +218,10 @@ async function init() {
       e.status = status;
       e.json = data;
       throw e;
+    }
+
+    if (!filter) {
+      return data;
     }
 
     try {
@@ -215,6 +252,56 @@ async function init() {
         console.log(e);
         res.status(e.status).json(e.json);
       }
+    },
+  ));
+
+  async function canAccessFeed(collection, collectionId, patreon) {
+    const pledge = await getPledge(patreon);
+    if (collection === 'podcast') {
+      const path = `entries/${collectionId}`;
+      const podcast = await contentfulGet(path, {}, patreon.token, false);
+      return canAccessPodcast(pledge, podcast);
+    }
+    return canAccessPatronMedia(pledge);
+  }
+
+  app.get('*/rss/:collection/:collectionId', wrapAsync(
+    async (req, res) => {
+      const { collection, collectionId } = req.params;
+      const collectionFields = {
+        podcast: 'podcast',
+        'meditation-category': 'category',
+      };
+      if (!_.has(collectionFields, collection)) {
+        throw new Error(`invalid collection '${collection}'`);
+      }
+
+      const collectionField = collectionFields[collection];
+      const itemType = {
+        podcast: 'podcastEpisode',
+        category: 'meditation',
+      }[collectionField];
+
+      const path = 'entries';
+      const params = {
+        content_type: itemType,
+        [`fields.${collectionField}.sys.id`]: collectionId,
+      };
+      const { campaign_url: campaignUrl } = await getCreds('patreon');
+      const patreon = {
+        token: _.get(req.query, 'patreonToken'),
+        campaignUrl,
+      };
+      const access = await canAccessFeed(collection, collectionId, patreon);
+      if (!access) {
+        res.status(401).send('feed access denied');
+        return;
+      }
+      res.status(200).json({ success: true });
+      return;
+
+      const data = await contentfulGet(path, params, patreon.token);
+      // TODO: generate feed
     },
   ));
 

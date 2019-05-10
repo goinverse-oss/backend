@@ -23,8 +23,9 @@
     "patreon": "^0.4.1",
     "progress": "^2.0.3",
     "qs": "^6.6.0",
+    "rss": "^1.2.2",
     "rss-parser": "^3.7.0",
-    "serverless": "^1.36.3",
+    "serverless": "^1.42.1",
     "serverless-http": "^1.9.0",
     "yargs": "^13.2.2"
   },
