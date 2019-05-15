@@ -337,6 +337,11 @@ async function init() {
         res.status(401).send('feed access denied');
         return;
       }
+      if (collectionObj.fields.feedUrl) {
+        res.redirect(collectionObj.fields.feedUrl);
+        return;
+      }
+
       if (collectionObj.fields.image) {
         const assetId = collectionObj.fields.image.sys.id;
         const imageAsset = await contentfulGet(`assets/${assetId}`, {});
