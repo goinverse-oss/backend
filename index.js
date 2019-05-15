@@ -8,6 +8,8 @@ const morgan = require('morgan');
 const _ = require('lodash');
 const Sentry = require('@sentry/node');
 const { patreon: patreonAPI } = require('patreon');
+const RSS = require('rss');
+const striptags = require('striptags');
 
 const { getCreds } = require('./src/creds');
 
@@ -31,7 +33,7 @@ function canAccessPatronMedia(pledge) {
 }
 
 function canAccess(pledge, item, podcasts) {
-  const contentType = item.sys.contentType.sys.id;
+  const contentType = _.get(item, 'sys.contentType.sys.id');
   if (contentType === 'podcastEpisode') {
     const podcast = podcasts[item.fields.podcast.sys.id];
     return canAccessPodcast(pledge, podcast);
@@ -74,37 +76,44 @@ async function getPledge(patreon) {
   );
 }
 
+function filterEntry(entry, pledge, podcasts) {
+  if (canAccess(pledge, entry, podcasts)) {
+    return _.set(entry, 'fields.patronsOnly', false);
+  }
+
+  const filteredEntry = entry.fields.isFreePreview
+    ? entry
+    : _.omit(entry, ['fields.media', 'fields.mediaUrl']);
+
+  // `patronsOnly` tells the app that the user can't access this entry
+  // because they're not a patron or haven't pledged enough.
+  // `isFreePreview` tells the app to put a little "Free Preview"
+  // label on entries that wouldn't have been ordinarily accessible but are
+  // given as preview media.
+  return _.set(filteredEntry, 'fields.patronsOnly', true);
+}
+
 async function filterData(contentfulData, patreon) {
-  const pledge = getPledge(patreon);
+  const pledge = await getPledge(patreon);
+
+  if (!_.has(contentfulData, 'items')) {
+    // this is not an entry set; it's a single entry
+    return filterEntry(contentfulData, pledge, {});
+  }
 
   // podcasts are included; pull them out by ID first
+  const includedEntries = _.get(contentfulData, 'includes.Entry', []);
   const podcasts = _.fromPairs(
-    contentfulData.includes.Entry.filter(
+    includedEntries.filter(
       entry => entry.sys.contentType.sys.id === 'podcast',
     ).map(podcast => ([podcast.sys.id, podcast])),
   );
 
-  return {
+  const d = {
     ...contentfulData,
-    items: contentfulData.items.map(
-      (item) => {
-        if (canAccess(pledge, item, podcasts)) {
-          return _.set(item, 'fields.patronsOnly', false);
-        }
-
-        const filteredItem = item.fields.isFreePreview
-          ? item
-          : _.omit(item, ['fields.media', 'fields.mediaUrl']);
-
-        // `patronsOnly` tells the app that the user can't access this item
-        // because they're not a patron or haven't pledged enough.
-        // `isFreePreview` tells the app to put a little "Free Preview"
-        // label on items that wouldn't have been ordinarily accessible but are
-        // given as preview media.
-        return _.set(filteredItem, 'fields.patronsOnly', true);
-      },
-    ),
+    items: contentfulData.items.map(item => filterEntry(item, pledge, podcasts)),
   };
+  return d;
 }
 
 function wrapAsync(fn) {
@@ -209,9 +218,8 @@ async function init() {
       token: patreonToken,
       campaignUrl,
     };
-    const { status } = contentfulRes;
-    const { data } = contentfulRes;
-    Sentry.addBreadcrumb({ message: 'Got contentful response', data });
+    const { status, data } = contentfulRes;
+    Sentry.addBreadcrumb({ message: 'Got contentful response', data: { json: data } });
 
     if (status >= 400) {
       const e = new Error();
@@ -233,7 +241,7 @@ async function init() {
           + 'Please re-connect Patreon and try again.'
         ),
       };
-      throw e.error;
+      throw e;
     }
   }
 
@@ -241,7 +249,7 @@ async function init() {
     async (req, res) => {
       Sentry.addBreadcrumb({ message: 'API request', data: req.path });
 
-      const path = req.params[1];
+      const path = req.params[1]; // second wildcard match
       const params = req.query;
       const patreonToken = _.get(req.headers, 'x-theliturgists-patreon-token');
 
@@ -255,14 +263,45 @@ async function init() {
     },
   ));
 
-  async function canAccessFeed(collection, collectionId, patreon) {
+  async function canAccessFeed(collectionObj, patreon) {
     const pledge = await getPledge(patreon);
-    if (collection === 'podcast') {
-      const path = `entries/${collectionId}`;
-      const podcast = await contentfulGet(path, {}, patreon.token, false);
-      return canAccessPodcast(pledge, podcast);
+    if (collectionObj.sys.contentType.sys.id === 'podcast') {
+      return canAccessPodcast(pledge, collectionObj);
     }
     return canAccessPatronMedia(pledge);
+  }
+
+  function getImageUrl(collectionObj) {
+    let url = _.get(collectionObj, 'fields.image.file.url');
+    if (!url) {
+      url = _.get(collectionObj, 'fields.imageUrl');
+    }
+    return url;
+  }
+
+  function getMediaUrl(entry) {
+    let url = _.get(entry, 'fields.media.file.url');
+    if (!url) {
+      url = _.get(entry, 'fields.mediaUrl');
+    }
+    return url;
+  }
+
+  function imageElementIfDefined(entry) {
+    const href = getImageUrl(entry);
+    if (!href) {
+      return [];
+    }
+
+    return [
+      { 'itunes:image': { _attr: { href } } },
+    ];
+  }
+
+  function getFullRequestUrl(req) {
+    const { hostname, path } = req;
+    const prefix = /execute-api/.test(hostname) ? `/${stage}` : '';
+    return `https://${hostname}${prefix}${path}`;
   }
 
   app.get('*/rss/:collection/:collectionId', wrapAsync(
@@ -282,26 +321,102 @@ async function init() {
         category: 'meditation',
       }[collectionField];
 
-      const path = 'entries';
-      const params = {
-        content_type: itemType,
-        [`fields.${collectionField}.sys.id`]: collectionId,
-      };
       const { campaign_url: campaignUrl } = await getCreds('patreon');
       const patreon = {
         token: _.get(req.query, 'patreonToken'),
         campaignUrl,
       };
-      const access = await canAccessFeed(collection, collectionId, patreon);
+      const collectionObj = await contentfulGet(
+        `entries/${collectionId}`,
+        {},
+        patreon.token,
+        false,
+      );
+      const access = await canAccessFeed(collectionObj, patreon);
       if (!access) {
         res.status(401).send('feed access denied');
         return;
       }
-      res.status(200).json({ success: true });
-      return;
+      if (collectionObj.fields.image) {
+        const assetId = collectionObj.fields.image.sys.id;
+        const imageAsset = await contentfulGet(`assets/${assetId}`, {});
+        imageAsset.fields.file.url = `https:${imageAsset.fields.file.url}`;
+        collectionObj.fields.image = _.pick(imageAsset.fields, ['file', 'title']);
+      }
 
-      const data = await contentfulGet(path, params, patreon.token);
-      // TODO: generate feed
+      const params = {
+        content_type: itemType,
+        [`fields.${collectionField}.sys.id`]: collectionId,
+        order: '-fields.publishedAt',
+      };
+      const data = await contentfulGet('entries', params, patreon.token);
+      const category = 'Religion & Spirituality';
+      const author = 'The Liturgists Network';
+      const feed = new RSS({
+        title: collectionObj.fields.title,
+        description: collectionObj.fields.description,
+        feed_url: getFullRequestUrl(req),
+        site_url: 'https://theliturgists.com',
+        image_url: getImageUrl(collectionObj),
+        language: 'en-US',
+        categories: [category],
+        pubDate: _.get(data.items, [0, 'fields', 'publishedAt'], null),
+        custom_namespaces: {
+          itunes: 'http://www.itunes.com/dtds/podcast-1.0.dtd',
+          googleplay: 'http://www.google.com/schemas/play-podcasts/1.0',
+        },
+        custom_elements: [
+          { 'itunes:block': 'yes' },
+          { 'googleplay:block': 'yes' },
+          { 'itunes:summary': striptags(collectionObj.fields.description) },
+          { 'itunes:author': author },
+          {
+            'itunes:owner': [
+              { 'itunes:name': author },
+              { 'itunes:email': 'app@theliturgists.com' },
+            ],
+          },
+          {
+            'itunes:image': {
+              _attr: { href: getImageUrl(collectionObj) },
+            },
+          },
+          {
+            'itunes:category': {
+              _attr: { text: category },
+            },
+          },
+        ],
+      });
+
+      // TODO: handle contentful pagination
+      data.items.forEach((entry) => {
+        feed.item({
+          guid: entry.sys.id,
+          title: entry.fields.title,
+          description: entry.fields.description,
+          date: entry.fields.publishedAt,
+          enclosure: {
+            url: getMediaUrl(entry),
+            type: 'audio/mpeg',
+          },
+          image_url: getImageUrl(entry),
+          custom_elements: [
+            ...imageElementIfDefined(entry),
+            { 'itunes:duration': entry.fields.duration },
+            { 'itunes:summary': striptags(entry.fields.description) },
+            { 'itunes:subtitle': striptags(entry.fields.description) },
+            {
+              'content:encoded': {
+                _cdata: entry.fields.description,
+              },
+            },
+          ],
+        });
+      });
+      const xml = feed.xml({ indent: true });
+      res.set('Content-type', 'application/rss+xml');
+      res.status(200).send(xml);
     },
   ));
 
