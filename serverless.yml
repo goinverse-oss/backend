@@ -1,4 +1,4 @@
-service: theliturgists-backend-${self:custom.namespace}
+service: ${self:custom.service}-${self:custom.namespace}
 
 provider:
   name: aws
@@ -9,6 +9,7 @@ provider:
     lambda: true
   environment:
     SLS_STAGE: ${self:custom.stage}
+    DYNAMODB_TABLE_TOKENS: ${self:custom.dynamodbTables.tokens}
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -25,6 +26,36 @@ provider:
             - Ref: AWS::Region
             - Ref: AWS::AccountId
             - "parameter/${self:custom.stage}/*"
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - "Fn::GetAtt": [ TokensDynamoDBTable, Arn ]
+        - Fn::Join:
+            - "/"
+            - - "Fn::GetAtt": [ TokensDynamoDBTable, Arn ]
+              - "index"
+              - "*"
+
+  stackPolicy:
+    - Effect: Allow
+      Action: "Update:*"
+      Principal: "*"
+      Resource: "*"
+    - Effect: "Deny"
+      Action: ["Update:Replace"]
+      Principal: "*"
+      Resource: "LogicalResourceId/TokensDynamoDBTable"
+    - Effect: "Deny"
+      Action: ["Update:Delete"]
+      Principal: "*"
+      Resource: "LogicalResourceId/TokensDynamoDBTable"
 
 functions:
   app:
@@ -33,6 +64,7 @@ functions:
     events:
       - http: GET /patreon/authorize
       - http: POST /patreon/validate
+      - http: GET /patreon/api/{proxy+}
       - http: GET /contentful/{proxy+}
       - http: GET /rss/{proxy+}
   sync:
@@ -44,8 +76,35 @@ functions:
           enabled: ${self:custom.syncEnabled.${self:custom.stage}}
 
 custom:
+  service: theliturgists-backend
   namespace: ${env:SLS_NAMESPACE, env:USER}
   stage: ${opt:stage, self:provider.stage}
   syncEnabled:
     dev: false
     staging: true
+  dynamodbTables:
+    tokens: "${self:custom.service}-${self:custom.namespace}-${self:custom.stage}-tokens"
+
+resources:
+  Resources:
+    TokensDynamoDBTable:
+      # Table to store user id / Patreon id/token mapping
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.dynamodbTables.tokens}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: patreonUserId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: patreonUserIdIndex
+            KeySchema:
+              - AttributeName: patreonUserId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
