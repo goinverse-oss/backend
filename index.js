@@ -10,8 +10,12 @@ const Sentry = require('@sentry/node');
 const { patreon: patreonAPI } = require('patreon');
 const RSS = require('rss');
 const striptags = require('striptags');
+const uuidv4 = require('uuid/v4');
+const jwt = require('jsonwebtoken');
+const moment = require('moment');
 
 const { getCreds } = require('./src/creds');
+const TokenMapping = require('./src/TokenMapping');
 
 const stage = process.env.SLS_STAGE;
 
@@ -29,7 +33,8 @@ function canAccessPatronMedia(pledge) {
   // Patrons with the 'Master Meditations' reward tier
   // get access to both Meditations and Liturgies
   // in addition to patrons-only podcasts.
-  return pledge && /Meditations/i.test(pledge.reward.title);
+  const title = _.get(pledge, 'reward.title');
+  return title && /Meditations/i.test(title);
 }
 
 function canAccess(pledge, item, podcasts) {
@@ -44,12 +49,7 @@ function canAccess(pledge, item, podcasts) {
   return true;
 }
 
-async function getPledge(patreon) {
-  const { token, campaignUrl } = patreon;
-  if (!token || !campaignUrl) {
-    return null;
-  }
-
+async function getPatreonUser(token) {
   const client = patreonAPI(token);
   let resp;
   try {
@@ -68,7 +68,16 @@ async function getPledge(patreon) {
   }
 
   const { store, rawJson } = resp;
-  const user = store.find('user', rawJson.data.id);
+  return store.find('user', rawJson.data.id);
+}
+
+async function getPledge(patreon) {
+  const { token, campaignUrl } = patreon;
+  if (!token || !campaignUrl) {
+    return null;
+  }
+
+  const user = await getPatreonUser(token);
 
   return _.find(
     user.pledges,
@@ -77,6 +86,7 @@ async function getPledge(patreon) {
 }
 
 function filterEntry(entry, pledge, podcasts) {
+  console.log(entry, podcasts);
   if (canAccess(pledge, entry, podcasts)) {
     return _.set(entry, 'fields.patronsOnly', false);
   }
@@ -93,9 +103,7 @@ function filterEntry(entry, pledge, podcasts) {
   return _.set(filteredEntry, 'fields.patronsOnly', true);
 }
 
-async function filterData(contentfulData, patreon) {
-  const pledge = await getPledge(patreon);
-
+async function filterData(contentfulData, pledge) {
   if (!_.has(contentfulData, 'items')) {
     // this is not an entry set; it's a single entry
     return filterEntry(contentfulData, pledge, {});
@@ -126,9 +134,64 @@ function wrapAsync(fn) {
   );
 }
 
-const patreonBaseUrl = 'https://www.patreon.com/';
+const patreonBaseUrl = 'https://www.patreon.com';
 const patreonAuthUrl = `${patreonBaseUrl}/oauth2/authorize`;
-const patreonTokenUrl = `${patreonBaseUrl}/api/oauth2/token`;
+const patreonApiUrl = `${patreonBaseUrl}/api/oauth2`;
+const patreonTokenUrl = `${patreonApiUrl}/token`;
+
+/**
+ * Return a route handler that maps the liturgists token (if present)
+ * to the stored Patreon token, retrieves the patron's pledge (if any),
+ * attaches it to the request object as req.pledge, and passes control
+ * to the next function.
+ *
+ * Can be used in any route that supplies the `x-theliturgists-token`
+ * header with the JWT that was returned from the shimmed Patreon
+ * OAuth flow.
+ */
+function handleLiturgistsToken() {
+  return wrapAsync(
+    async (req, res, next) => {
+      const token = _.get(
+        req.headers,
+        'x-theliturgists-token',
+        _.get(req.query, 'token')
+      );
+
+      if (token) {
+        const { secret } = await getCreds('jwt');
+        try {
+          const { userId } = jwt.verify(token, secret);
+          const resp = await TokenMapping
+            .query(userId)
+            .exec()
+            .promise();
+          const [{ Items: items }] = resp;
+          if (!items || items.length === 0) {
+            throw new Error(`no token mapping found for userId ${userId}`);
+          }
+          console.log('token mapping:', items[0].attrs);
+          const { patreonToken } = items[0].attrs;
+          if (!patreonToken) {
+            throw new Error(`no patreon token found for userId ${userId}`);
+          }
+          const { campaign_url: campaignUrl } = await getCreds('patreon');
+
+          // Assign token mapping and pledge to request object for later use
+          req.tokenMapping = items[0].attrs;
+          req.pledge = await getPledge({ token: patreonToken, campaignUrl });
+          console.log('pledge:', req.pledge);
+        } catch (err) {
+          console.error(err);
+          res.status(401).json({ error: 'invalid token' });
+          return;
+        }
+      }
+
+      next();
+    },
+  );
+}
 
 async function init() {
   const sentry = await getCreds('sentry');
@@ -170,16 +233,87 @@ async function init() {
     bodyParser.urlencoded({ extended: true }),
     wrapAsync(
       async (req, res) => {
-        const patreon = await getCreds('patreon');
+        // eslint-disable-next-line camelcase
+        const { client_id, client_secret } = await getCreds('patreon');
 
         const url = patreonTokenUrl;
 
         const obj = {
           ...req.body,
-          ..._.pick(patreon, ['client_id', 'client_secret']),
+          client_id,
+          client_secret,
         };
         const body = qs.stringify(obj);
-        const patreonRes = await axios.post(url, body, { validateStatus: null });
+        let patreonRes;
+        try {
+          patreonRes = await axios.post(url, body);
+        } catch (err) {
+          res.status(err.response.status).json(err.response.data);
+          return;
+        }
+
+        const {
+          access_token: patreonToken,
+          refresh_token: refreshToken,
+          expires_in: expiresIn,
+        } = patreonRes.data;
+
+        const expiresAt = moment().add(expiresIn, 'seconds').toISOString();
+
+        const patreonUser = await getPatreonUser(patreonToken);
+        const patreonUserId = patreonUser.id;
+
+        const resp = await TokenMapping
+          .query(patreonUserId)
+          .usingIndex('patreonUserIdIndex')
+          .exec()
+          .promise();
+
+        console.log('TokenMapping resp:', resp);
+
+        const [{ Items: items }] = resp;
+        console.log(`Destroying ${items.length} existing patreon records`);
+        await Promise.all(items.map(item => item.destroy()));
+
+        const userId = uuidv4();
+        await TokenMapping.create({
+          userId,
+          patreonUserId,
+          patreonToken,
+          refreshToken,
+          expiresAt,
+        });
+
+        const { secret } = await getCreds('jwt');
+        const token = jwt.sign({ userId }, secret);
+        const data = {
+          liturgistsToken: token,
+        };
+
+        res.status(200).json(data);
+      },
+    ),
+  );
+
+  app.get(
+    '*/patreon/api/*',
+    handleLiturgistsToken(),
+    wrapAsync(
+      async (req, res) => {
+        const path = req.params[1];  // second wildcard match
+        const url = `${patreonApiUrl}/api/${path}`;
+        console.log('tokenMapping:', req.tokenMapping);
+        const token = req.tokenMapping.patreonToken;
+        const patreonRes = await axios.get(
+          url,
+          {
+            validateStatus: null,
+            headers: {
+              authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        console.log('patreon response', patreonRes);
         res.status(patreonRes.status).json(patreonRes.data);
       },
     ),
@@ -195,10 +329,9 @@ async function init() {
    * @throws {Error} on contentful API error
    *   error object has 'status' and 'json' fields
    */
-  async function contentfulGet(path, params, patreonToken, filter = true) {
+  async function contentfulGet(path, params, pledge, filter = true) {
     const contentful = await getCreds('contentful');
     const { space, environment } = contentful;
-    const { campaign_url: campaignUrl } = await getCreds('patreon');
 
     const fullPath = `/spaces/${space}/environments/${environment}/${path}`;
     const host = 'https://cdn.contentful.com';
@@ -214,10 +347,6 @@ async function init() {
         authorization: `Bearer ${contentful.accessToken}`,
       },
     });
-    const patreon = {
-      token: patreonToken,
-      campaignUrl,
-    };
     const { status, data } = contentfulRes;
     Sentry.addBreadcrumb({ message: 'Got contentful response', data: { json: data } });
 
@@ -233,7 +362,7 @@ async function init() {
     }
 
     try {
-      return await filterData(data, patreon);
+      return await filterData(data, pledge);
     } catch (e) {
       e.json = {
         error: (
@@ -245,26 +374,28 @@ async function init() {
     }
   }
 
-  app.get('*/contentful/spaces/:space/environments/:env/*', wrapAsync(
-    async (req, res) => {
-      Sentry.addBreadcrumb({ message: 'API request', data: req.path });
+  app.get(
+    '*/contentful/spaces/:space/environments/:env/*',
+    handleLiturgistsToken(),
+    wrapAsync(
+      async (req, res) => {
+        Sentry.addBreadcrumb({ message: 'API request', data: req.path });
 
-      const path = req.params[1]; // second wildcard match
-      const params = req.query;
-      const patreonToken = _.get(req.headers, 'x-theliturgists-patreon-token');
+        const path = req.params[1]; // second wildcard match
+        const params = req.query;
 
-      try {
-        const data = await contentfulGet(path, params, patreonToken);
-        res.status(200).json(data);
-      } catch (e) {
-        console.log(e);
-        res.status(e.status).json(e.json);
-      }
-    },
-  ));
+        try {
+          const data = await contentfulGet(path, params, req.pledge);
+          res.status(200).json(data);
+        } catch (e) {
+          console.error(e);
+          res.status(e.status).json(e.json);
+        }
+      },
+    ),
+  );
 
-  async function canAccessFeed(collectionObj, patreon) {
-    const pledge = await getPledge(patreon);
+  async function canAccessFeed(collectionObj, pledge) {
     if (collectionObj.sys.contentType.sys.id === 'podcast') {
       return canAccessPodcast(pledge, collectionObj);
     }
@@ -304,126 +435,124 @@ async function init() {
     return `https://${hostname}${prefix}${path}`;
   }
 
-  app.get('*/rss/:collection/:collectionId', wrapAsync(
-    async (req, res) => {
-      const { collection, collectionId } = req.params;
-      const collectionFields = {
-        podcast: 'podcast',
-        'meditation-category': 'category',
-      };
-      if (!_.has(collectionFields, collection)) {
-        throw new Error(`invalid collection '${collection}'`);
-      }
+  app.get(
+    '*/rss/:collection/:collectionId',
+    handleLiturgistsToken(),
+    wrapAsync(
+      async (req, res) => {
+        const { collection, collectionId } = req.params;
+        const collectionFields = {
+          podcast: 'podcast',
+          'meditation-category': 'category',
+        };
+        if (!_.has(collectionFields, collection)) {
+          throw new Error(`invalid collection '${collection}'`);
+        }
 
-      const collectionField = collectionFields[collection];
-      const itemType = {
-        podcast: 'podcastEpisode',
-        category: 'meditation',
-      }[collectionField];
+        const collectionField = collectionFields[collection];
+        const itemType = {
+          podcast: 'podcastEpisode',
+          category: 'meditation',
+        }[collectionField];
 
-      const { campaign_url: campaignUrl } = await getCreds('patreon');
-      const patreon = {
-        token: _.get(req.query, 'patreonToken'),
-        campaignUrl,
-      };
-      const collectionObj = await contentfulGet(
-        `entries/${collectionId}`,
-        {},
-        patreon.token,
-        false,
-      );
-      const access = await canAccessFeed(collectionObj, patreon);
-      if (!access) {
-        res.status(401).send('feed access denied');
-        return;
-      }
-      if (collectionObj.fields.feedUrl) {
-        res.redirect(collectionObj.fields.feedUrl);
-        return;
-      }
+        const collectionObj = await contentfulGet(
+          `entries/${collectionId}`,
+          {},
+          req.pledge,
+          false,
+        );
+        const access = await canAccessFeed(collectionObj, req.pledge);
+        if (!access) {
+          res.status(401).send('feed access denied');
+          return;
+        }
+        if (collectionObj.fields.feedUrl) {
+          res.redirect(collectionObj.fields.feedUrl);
+          return;
+        }
 
-      if (collectionObj.fields.image) {
-        const assetId = collectionObj.fields.image.sys.id;
-        const imageAsset = await contentfulGet(`assets/${assetId}`, {});
-        imageAsset.fields.file.url = `https:${imageAsset.fields.file.url}`;
-        collectionObj.fields.image = _.pick(imageAsset.fields, ['file', 'title']);
-      }
+        if (collectionObj.fields.image) {
+          const assetId = collectionObj.fields.image.sys.id;
+          const imageAsset = await contentfulGet(`assets/${assetId}`, {});
+          imageAsset.fields.file.url = `https:${imageAsset.fields.file.url}`;
+          collectionObj.fields.image = _.pick(imageAsset.fields, ['file', 'title']);
+        }
 
-      const params = {
-        content_type: itemType,
-        [`fields.${collectionField}.sys.id`]: collectionId,
-        order: '-fields.publishedAt',
-      };
-      const data = await contentfulGet('entries', params, patreon.token);
-      const category = 'Religion & Spirituality';
-      const author = 'The Liturgists Network';
-      const feed = new RSS({
-        title: collectionObj.fields.title,
-        description: collectionObj.fields.description,
-        feed_url: getFullRequestUrl(req),
-        site_url: 'https://theliturgists.com',
-        image_url: getImageUrl(collectionObj),
-        language: 'en-US',
-        categories: [category],
-        pubDate: _.get(data.items, [0, 'fields', 'publishedAt'], null),
-        custom_namespaces: {
-          itunes: 'http://www.itunes.com/dtds/podcast-1.0.dtd',
-          googleplay: 'http://www.google.com/schemas/play-podcasts/1.0',
-        },
-        custom_elements: [
-          { 'itunes:block': 'yes' },
-          { 'googleplay:block': 'yes' },
-          { 'itunes:summary': striptags(collectionObj.fields.description) },
-          { 'itunes:author': author },
-          {
-            'itunes:owner': [
-              { 'itunes:name': author },
-              { 'itunes:email': 'app@theliturgists.com' },
-            ],
+        const params = {
+          content_type: itemType,
+          [`fields.${collectionField}.sys.id`]: collectionId,
+          order: '-fields.publishedAt',
+        };
+        const data = await contentfulGet('entries', params, req.pledge);
+        const category = 'Religion & Spirituality';
+        const author = 'The Liturgists Network';
+        const feed = new RSS({
+          title: collectionObj.fields.title,
+          description: collectionObj.fields.description,
+          feed_url: getFullRequestUrl(req),
+          site_url: 'https://theliturgists.com',
+          image_url: getImageUrl(collectionObj),
+          language: 'en-US',
+          categories: [category],
+          pubDate: _.get(data.items, [0, 'fields', 'publishedAt'], null),
+          custom_namespaces: {
+            itunes: 'http://www.itunes.com/dtds/podcast-1.0.dtd',
+            googleplay: 'http://www.google.com/schemas/play-podcasts/1.0',
           },
-          {
-            'itunes:image': {
-              _attr: { href: getImageUrl(collectionObj) },
-            },
-          },
-          {
-            'itunes:category': {
-              _attr: { text: category },
-            },
-          },
-        ],
-      });
-
-      // TODO: handle contentful pagination
-      data.items.forEach((entry) => {
-        feed.item({
-          guid: entry.sys.id,
-          title: entry.fields.title,
-          description: entry.fields.description,
-          date: entry.fields.publishedAt,
-          enclosure: {
-            url: getMediaUrl(entry),
-            type: 'audio/mpeg',
-          },
-          image_url: getImageUrl(entry),
           custom_elements: [
-            ...imageElementIfDefined(entry),
-            { 'itunes:duration': entry.fields.duration },
-            { 'itunes:summary': striptags(entry.fields.description) },
-            { 'itunes:subtitle': striptags(entry.fields.description) },
+            { 'itunes:block': 'yes' },
+            { 'googleplay:block': 'yes' },
+            { 'itunes:summary': striptags(collectionObj.fields.description) },
+            { 'itunes:author': author },
             {
-              'content:encoded': {
-                _cdata: entry.fields.description,
+              'itunes:owner': [
+                { 'itunes:name': author },
+                { 'itunes:email': 'app@theliturgists.com' },
+              ],
+            },
+            {
+              'itunes:image': {
+                _attr: { href: getImageUrl(collectionObj) },
+              },
+            },
+            {
+              'itunes:category': {
+                _attr: { text: category },
               },
             },
           ],
         });
-      });
-      const xml = feed.xml({ indent: true });
-      res.set('Content-type', 'application/rss+xml');
-      res.status(200).send(xml);
-    },
-  ));
+
+        // TODO: handle contentful pagination
+        data.items.forEach((entry) => {
+          feed.item({
+            guid: entry.sys.id,
+            title: entry.fields.title,
+            description: entry.fields.description,
+            date: entry.fields.publishedAt,
+            enclosure: {
+              url: getMediaUrl(entry),
+              type: 'audio/mpeg',
+            },
+            image_url: getImageUrl(entry),
+            custom_elements: [
+              ...imageElementIfDefined(entry),
+              { 'itunes:duration': entry.fields.duration },
+              { 'itunes:summary': striptags(entry.fields.description) },
+              { 'itunes:subtitle': striptags(entry.fields.description) },
+              {
+                'content:encoded': {
+                  _cdata: entry.fields.description,
+                },
+              },
+            ],
+          });
+        });
+        const xml = feed.xml({ indent: true });
+        res.set('Content-type', 'application/rss+xml');
+        res.status(200).send(xml);
+      },
+    ));
 
   app.use(
     // eslint-disable-next-line
