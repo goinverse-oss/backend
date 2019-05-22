@@ -13,6 +13,7 @@ const striptags = require('striptags');
 const uuidv4 = require('uuid/v4');
 const jwt = require('jsonwebtoken');
 const moment = require('moment');
+const urlParse = require('url-parse');
 
 const { getCreds } = require('./src/creds');
 const TokenMapping = require('./src/TokenMapping');
@@ -268,20 +269,41 @@ async function init() {
           .promise();
 
         const [{ Items: items }] = resp;
-        console.log(`Destroying ${items.length} existing patreon records`);
-        await Promise.all(items.map(item => item.destroy()));
+        if (items.length > 0) {
+          console.log('Patreon has existing token mapping; updating it');
+          if (items.length > 1) {
+            // shouldn't happen, but tidy up if it does
+            console.log(`Destroying ${items.length - 1} duplicate mappings`);
+            await Promise.all(items.slice(1).map(item => item.destroy()));
+          }
+          userId = items[0].attrs.userId;
+          await TokenMapping.update({
+            userId,
+            patreonUserId,
+            patreonToken,
+            refreshToken,
+            expiresAt,
+          })
+        } else {
+          console.log('Patreon has no existing token mapping; creating one');
+          userId = uuidv4();
 
-        const userId = uuidv4();
-        await TokenMapping.create({
-          userId,
-          patreonUserId,
-          patreonToken,
-          refreshToken,
-          expiresAt,
-        });
+          await TokenMapping.create({
+            userId,
+            patreonUserId,
+            patreonToken,
+            refreshToken,
+            expiresAt,
+          });
+        }
 
         const { secret } = await getCreds('jwt');
-        const token = jwt.sign({ userId }, secret);
+
+        // using noTimestamp here makes the token (and thus URLs containing it)
+        // a bit shorter, giving us some headroom with podcast clients like
+        // Overcast which have a hard limit of 256 chars on feed URL length.
+        // Plus, we weren't using the issuedAt ('iat') timestamp anyway.
+        const token = jwt.sign({ userId }, secret, { noTimestamp: true });
         const data = {
           liturgistsToken: token,
         };
@@ -412,6 +434,19 @@ async function init() {
     return url;
   }
 
+  function getMimeType(entry) {
+    // dumb assumption of MIME type from filename extension.
+    // TODO: determine via HTTP HEAD Content-type response header?
+    const url = getMediaUrl(entry);
+    const parsed = urlParse(url);
+    const extension = parsed.pathname.split('.').slice(-1)[0];
+    const types = {
+      mp3: 'mpeg',
+    };
+    const type = _.get(types, extension, extension);
+    return `audio/${type}`;
+  }
+
   function imageElementIfDefined(entry) {
     const href = getImageUrl(entry);
     if (!href) {
@@ -426,7 +461,9 @@ async function init() {
   function getFullRequestUrl(req) {
     const { hostname, path } = req;
     const prefix = /execute-api/.test(hostname) ? `/${stage}` : '';
-    return `https://${hostname}${prefix}${path}`;
+    const query = qs.stringify(req.query);
+    const querySuffix = query ? `?${query}` : '';
+    return `https://${hostname}${prefix}${path}${querySuffix}`;
   }
 
   app.get(
@@ -471,6 +508,9 @@ async function init() {
         let coverImageUrl, title, description;
         if (collectionObj) {
           ({ title, description } = collectionObj.fields);
+          if (collectionObj.type === 'meditationCategory') {
+            title = `The Liturgists - Meditations - ${title}`;
+          }
 
           if (collectionObj.fields.feedUrl) {
             res.redirect(collectionObj.fields.feedUrl);
@@ -486,7 +526,7 @@ async function init() {
           coverImageUrl = getImageUrl(collectionObj);
         } else {
           // this is the "All Meditations" pseudo-collection
-          title = 'All Meditations';
+          title = 'The Liturgists - Meditations';
           description = 'All meditations in all categories.';
 
           const assetId = '4fw1cG2nsTZ9Upl3jpWDVH';  // ID for the cover image
@@ -565,7 +605,7 @@ async function init() {
             date: entry.fields.publishedAt,
             enclosure: {
               url: getMediaUrl(entry),
-              type: 'audio/mpeg',
+              type: getMimeType(entry),
             },
             image_url: getImageUrl(entry),
             custom_elements: [
@@ -585,7 +625,8 @@ async function init() {
         res.set('Content-type', 'application/rss+xml');
         res.status(200).send(xml);
       },
-    ));
+    ),
+  );
 
   app.use(
     // eslint-disable-next-line
