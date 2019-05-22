@@ -443,7 +443,7 @@ async function init() {
         const { collection, collectionId } = req.params;
         const collectionFields = {
           podcast: 'podcast',
-          'meditation-category': 'category',
+          'meditationCategory': 'category',
         };
         if (!_.has(collectionFields, collection)) {
           throw new Error(`invalid collection '${collection}'`);
@@ -455,46 +455,86 @@ async function init() {
           category: 'meditation',
         }[collectionField];
 
-        const collectionObj = await contentfulGet(
-          `entries/${collectionId}`,
-          {},
-          req.pledge,
-          false,
-        );
-        const access = await canAccessFeed(collectionObj, req.pledge);
+        let access, collectionObj;
+        if (collection === 'meditationCategory' && collectionId === 'all') {
+          // there's no actual meditation category for 'all';
+          // just check if the user can access meditations in general.
+          access = canAccessPatronMedia(req.pledge);
+        } else {
+          collectionObj = await contentfulGet(
+            `entries/${collectionId}`,
+            {},
+            req.pledge,
+            false,
+          );
+          access = await canAccessFeed(collectionObj, req.pledge);
+        }
         if (!access) {
           res.status(401).send('feed access denied');
           return;
         }
-        if (collectionObj.fields.feedUrl) {
-          res.redirect(collectionObj.fields.feedUrl);
-          return;
-        }
 
-        if (collectionObj.fields.image) {
-          const assetId = collectionObj.fields.image.sys.id;
+        let coverImageUrl, title, description;
+        if (collectionObj) {
+          ({ title, description } = collectionObj.fields);
+
+          if (collectionObj.fields.feedUrl) {
+            res.redirect(collectionObj.fields.feedUrl);
+            return;
+          }
+
+          if (collectionObj.fields.image) {
+            const assetId = collectionObj.fields.image.sys.id;
+            const imageAsset = await contentfulGet(`assets/${assetId}`, {});
+            imageAsset.fields.file.url = `https:${imageAsset.fields.file.url}`;
+            collectionObj.fields.image = _.pick(imageAsset.fields, ['file', 'title']);
+          }
+          coverImageUrl = getImageUrl(collectionObj);
+        } else {
+          // this is the "All Meditations" pseudo-collection
+          title = 'All Meditations';
+          description = 'All meditations in all categories.';
+
+          const assetId = '4fw1cG2nsTZ9Upl3jpWDVH';  // ID for the cover image
           const imageAsset = await contentfulGet(`assets/${assetId}`, {});
           imageAsset.fields.file.url = `https:${imageAsset.fields.file.url}`;
-          collectionObj.fields.image = _.pick(imageAsset.fields, ['file', 'title']);
+          coverImageUrl = _.pick(imageAsset.fields, ['file', 'title']);
         }
 
+        const limit = 1000;
+        const collectionParams = (
+          collectionObj
+            ? { [`fields.${collectionField}.sys.id`]: collectionId }
+            : {}
+        );
         const params = {
           content_type: itemType,
-          [`fields.${collectionField}.sys.id`]: collectionId,
+          ...collectionParams,
           order: '-fields.publishedAt',
+          limit,
+          skip: 0,
         };
-        const data = await contentfulGet('entries', params, req.pledge);
+        let items = [];
+        while (true) {
+          const data = await contentfulGet('entries', params, req.pledge);
+          items = items.concat(data.items);
+          if (data.items.length < limit) {
+            break;
+          }
+          params.skip += limit;
+        }
+
         const category = 'Religion & Spirituality';
         const author = 'The Liturgists Network';
         const feed = new RSS({
-          title: collectionObj.fields.title,
-          description: collectionObj.fields.description,
+          title: title,
+          description: description,
           feed_url: getFullRequestUrl(req),
           site_url: 'https://theliturgists.com',
-          image_url: getImageUrl(collectionObj),
+          image_url: coverImageUrl,
           language: 'en-US',
           categories: [category],
-          pubDate: _.get(data.items, [0, 'fields', 'publishedAt'], null),
+          pubDate: _.get(items, [0, 'fields', 'publishedAt'], null),
           custom_namespaces: {
             itunes: 'http://www.itunes.com/dtds/podcast-1.0.dtd',
             googleplay: 'http://www.google.com/schemas/play-podcasts/1.0',
@@ -502,7 +542,7 @@ async function init() {
           custom_elements: [
             { 'itunes:block': 'yes' },
             { 'googleplay:block': 'yes' },
-            { 'itunes:summary': striptags(collectionObj.fields.description) },
+            { 'itunes:summary': striptags(description) },
             { 'itunes:author': author },
             {
               'itunes:owner': [
@@ -512,7 +552,7 @@ async function init() {
             },
             {
               'itunes:image': {
-                _attr: { href: getImageUrl(collectionObj) },
+                _attr: { href: coverImageUrl },
               },
             },
             {
@@ -524,7 +564,7 @@ async function init() {
         });
 
         // TODO: handle contentful pagination
-        data.items.forEach((entry) => {
+        items.forEach((entry) => {
           feed.item({
             guid: entry.sys.id,
             title: entry.fields.title,
