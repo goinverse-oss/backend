@@ -86,7 +86,6 @@ async function getPledge(patreon) {
 }
 
 function filterEntry(entry, pledge, podcasts) {
-  console.log(entry, podcasts);
   if (canAccess(pledge, entry, podcasts)) {
     return _.set(entry, 'fields.patronsOnly', false);
   }
@@ -180,7 +179,6 @@ function handleLiturgistsToken() {
           // Assign token mapping and pledge to request object for later use
           req.tokenMapping = items[0].attrs;
           req.pledge = await getPledge({ token: patreonToken, campaignUrl });
-          console.log('pledge:', req.pledge);
         } catch (err) {
           console.error(err);
           res.status(401).json({ error: 'invalid token' });
@@ -269,8 +267,6 @@ async function init() {
           .exec()
           .promise();
 
-        console.log('TokenMapping resp:', resp);
-
         const [{ Items: items }] = resp;
         console.log(`Destroying ${items.length} existing patreon records`);
         await Promise.all(items.map(item => item.destroy()));
@@ -302,7 +298,6 @@ async function init() {
       async (req, res) => {
         const path = req.params[1];  // second wildcard match
         const url = `${patreonApiUrl}/api/${path}`;
-        console.log('tokenMapping:', req.tokenMapping);
         const token = req.tokenMapping.patreonToken;
         const patreonRes = await axios.get(
           url,
@@ -313,7 +308,6 @@ async function init() {
             },
           }
         );
-        console.log('patreon response', patreonRes);
         res.status(patreonRes.status).json(patreonRes.data);
       },
     ),
@@ -563,7 +557,6 @@ async function init() {
           ],
         });
 
-        // TODO: handle contentful pagination
         items.forEach((entry) => {
           feed.item({
             guid: entry.sys.id,
