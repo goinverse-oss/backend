@@ -196,6 +196,16 @@ async function refreshPatreonToken(tokenMapping) {
 function handleLiturgistsToken() {
   return wrapAsync(
     async (req, res, next) => {
+      const ERROR_CODE_NEED_PATREON_REAUTH = 'needPatreonReauth';
+      if (_.has(req.headers, 'x-theliturgists-patreon-token')) {
+        // old version of the app; needs patreon re-auth
+        res.status(401).json({
+          error: 'invalid auth header',
+          code: ERROR_CODE_NEED_PATREON_REAUTH,
+        });
+        return;
+      }
+
       const token = _.get(
         req.headers,
         'x-theliturgists-token',
@@ -247,7 +257,10 @@ function handleLiturgistsToken() {
             );
             await tokenMappingObj.destroy();
           }
-          res.status(401).json({ error: 'invalid token' });
+          res.status(401).json({
+            error: 'invalid token',
+            code: ERROR_CODE_NEED_PATREON_REAUTH,
+          });
           return;
         }
       }
