@@ -139,6 +139,50 @@ const patreonAuthUrl = `${patreonBaseUrl}/oauth2/authorize`;
 const patreonApiUrl = `${patreonBaseUrl}/api/oauth2`;
 const patreonTokenUrl = `${patreonApiUrl}/token`;
 
+async function refreshPatreonToken(tokenMapping) {
+  // eslint-disable-next-line camelcase
+  const { client_id, client_secret } = await getCreds('patreon');
+
+  const url = patreonTokenUrl;
+
+  console.log(`Refreshing patreon token for user ${tokenMapping.patreonUserId}`);
+
+  const obj = {
+    grant_type: 'refresh_token',
+    refresh_token: tokenMapping.refreshToken,
+    client_id,
+    client_secret,
+  };
+  const body = qs.stringify(obj);
+  let patreonRes;
+  try {
+    patreonRes = await axios.post(url, body);
+    console.log('Successfully refreshed patreon token');
+  } catch (err) {
+    Sentry.captureException(err);
+    throw new Error('Failed to refresh patreon token');
+  }
+
+  const {
+    access_token: patreonToken,
+    refresh_token: refreshToken,
+    expires_in: expiresIn,
+  } = patreonRes.data;
+
+  const expiresAt = moment().add(expiresIn, 'seconds').toISOString();
+
+  const patreonUser = await getPatreonUser(patreonToken);
+  const patreonUserId = patreonUser.id;
+
+  await upsertTokenMapping({
+    patreonUserId,
+    patreonToken,
+    refreshToken,
+    expiresAt,
+  });
+  return patreonToken;
+}
+
 /**
  * Return a route handler that maps the liturgists token (if present)
  * to the stored Patreon token, retrieves the patron's pledge (if any),
@@ -158,6 +202,9 @@ function handleLiturgistsToken() {
         _.get(req.query, 'token')
       );
 
+      let tokenMappingObj;
+      let tokenMapping;
+
       if (token) {
         const { secret } = await getCreds('jwt');
         try {
@@ -170,18 +217,36 @@ function handleLiturgistsToken() {
           if (!items || items.length === 0) {
             throw new Error(`no token mapping found for userId ${userId}`);
           }
-          console.log('token mapping:', items[0].attrs);
-          const { patreonToken } = items[0].attrs;
-          if (!patreonToken) {
+          tokenMappingObj = items[0];
+          tokenMapping = tokenMappingObj.attrs;
+          let { patreonToken, refreshToken, expiresAt } = tokenMapping;
+          if (!patreonToken || !refreshToken) {
             throw new Error(`no patreon token found for userId ${userId}`);
           }
           const { campaign_url: campaignUrl } = await getCreds('patreon');
 
+          // if the token is expiring soon, refresh it first
+          if (moment(expiresAt).isBefore(moment().add(1, 'day'))) {
+            patreonToken = await refreshPatreonToken(tokenMapping);
+          }
+
           // Assign token mapping and pledge to request object for later use
           req.tokenMapping = items[0].attrs;
-          req.pledge = await getPledge({ token: patreonToken, campaignUrl });
+          try {
+            req.pledge = await getPledge({ token: patreonToken, campaignUrl });
+          } catch(err) {
+            // try to refresh in case the token has expired
+            const newPatreonToken = await refreshPatreonToken(tokenMapping);
+            req.pledge = await getPledge({ token: newPatreonToken, campaignUrl });
+          }
         } catch (err) {
-          console.error(err);
+          if (tokenMappingObj) {
+            console.log(
+              `Invalid token for patreon user ${tokenMapping.patreonUserId}; ` +
+              'removing mapping'
+            );
+            await tokenMappingObj.destroy();
+          }
           res.status(401).json({ error: 'invalid token' });
           return;
         }
@@ -190,6 +255,40 @@ function handleLiturgistsToken() {
       next();
     },
   );
+}
+
+async function upsertTokenMapping(tokenMapping) {
+  const newTokenMapping = { ...tokenMapping };
+  const { patreonUserId } = newTokenMapping;
+
+  const resp = await TokenMapping
+    .query(patreonUserId)
+    .usingIndex('patreonUserIdIndex')
+    .exec()
+    .promise();
+
+  const [{ Items: items }] = resp;
+  if (items.length > 0) {
+    console.log('Patreon has existing token mapping; updating it');
+    if (items.length > 1) {
+      // shouldn't happen, but tidy up if it does
+      console.log(`Destroying ${items.length - 1} duplicate mappings`);
+      await Promise.all(items.slice(1).map(item => item.destroy()));
+    }
+    newTokenMapping.userId = items[0].attrs.userId;
+    await TokenMapping.update(newTokenMapping)
+  } else {
+    console.log('Patreon has no existing token mapping; creating one');
+    newTokenMapping.userId = uuidv4();
+
+    await TokenMapping.create(newTokenMapping);
+  }
+
+  return newTokenMapping;
+}
+
+function redactUrl(url) {
+  return url.replace(/token=[^&]+/, 'token=<redacted>');
 }
 
 async function init() {
@@ -206,7 +305,14 @@ async function init() {
   app.use(Sentry.Handlers.requestHandler());
   app.use(Sentry.Handlers.errorHandler());
 
-  app.use(morgan('combined'));
+  app.use(morgan((tokens, req, res) => (
+    [
+      tokens.method(req, res),
+      redactUrl(tokens.url(req, res)),
+      tokens.status(req, res),
+      tokens['response-time'](req, res), 'ms'
+    ].join(' ')
+  )));
   app.use(helmet());
 
   // Initialize OAuth2 flow, redirecting to Patreon with client_id
@@ -262,40 +368,12 @@ async function init() {
         const patreonUser = await getPatreonUser(patreonToken);
         const patreonUserId = patreonUser.id;
 
-        const resp = await TokenMapping
-          .query(patreonUserId)
-          .usingIndex('patreonUserIdIndex')
-          .exec()
-          .promise();
-
-        const [{ Items: items }] = resp;
-        if (items.length > 0) {
-          console.log('Patreon has existing token mapping; updating it');
-          if (items.length > 1) {
-            // shouldn't happen, but tidy up if it does
-            console.log(`Destroying ${items.length - 1} duplicate mappings`);
-            await Promise.all(items.slice(1).map(item => item.destroy()));
-          }
-          userId = items[0].attrs.userId;
-          await TokenMapping.update({
-            userId,
-            patreonUserId,
-            patreonToken,
-            refreshToken,
-            expiresAt,
-          })
-        } else {
-          console.log('Patreon has no existing token mapping; creating one');
-          userId = uuidv4();
-
-          await TokenMapping.create({
-            userId,
-            patreonUserId,
-            patreonToken,
-            refreshToken,
-            expiresAt,
-          });
-        }
+        const { userId } = await upsertTokenMapping({
+          patreonUserId,
+          patreonToken,
+          refreshToken,
+          expiresAt,
+        });
 
         const { secret } = await getCreds('jwt');
 
