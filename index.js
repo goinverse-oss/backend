@@ -31,11 +31,12 @@ function canAccessPodcast(pledge, podcast) {
 }
 
 function canAccessPatronMedia(pledge) {
-  // Patrons with the 'Master Meditations' reward tier
+  // Patrons with the $5 reward tier or above
   // get access to both Meditations and Liturgies
   // in addition to patrons-only podcasts.
-  const title = _.get(pledge, 'reward.title');
-  return title && /Meditations/i.test(title);
+  const minMeditationsPledgeCents = 500;
+  const amount = _.get(pledge, 'amount_cents', 0);
+  return amount >= minMeditationsPledgeCents;
 }
 
 function canAccess(pledge, item, podcasts) {
