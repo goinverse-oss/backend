@@ -67,6 +67,7 @@
         "cloudformation:Describe*",
         "cloudformation:List*",
         "cloudformation:Get*",
+        "cloudformation:SetStackPolicy",
         "cloudformation:PreviewStackUpdate",
         "cloudformation:CreateStack",
         "cloudformation:UpdateStack",
@@ -194,6 +195,13 @@
       "Action": [
         "cloudwatch:*",
         "events:*"
+      ],
+      "Resource": "*",
+      "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "dynamodb:*Table*"
       ],
       "Resource": "*",
       "Effect": "Allow"

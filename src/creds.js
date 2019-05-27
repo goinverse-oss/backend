@@ -20,6 +20,9 @@ const credSpecs = {
   sentry: {
     dsn: `/${stage}/SENTRY_DSN`,
   },
+  jwt: {
+    secret: `/${stage}/JWT_SECRET`,
+  },
 };
 
 module.exports.getCreds = async (name) => {
