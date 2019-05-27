@@ -10,8 +10,7 @@ const Sentry = require('@sentry/node');
 const { patreon: patreonAPI } = require('patreon');
 const RSS = require('rss');
 const striptags = require('striptags');
-const uuidv4 = require('uuid/v4');
-const jwt = require('jsonwebtoken');
+const generate = require('nanoid/generate');
 const moment = require('moment');
 const urlParse = require('url-parse');
 
@@ -191,7 +190,7 @@ async function refreshPatreonToken(tokenMapping) {
  * to the next function.
  *
  * Can be used in any route that supplies the `x-theliturgists-token`
- * header with the JWT that was returned from the shimmed Patreon
+ * header with the token that was returned from the shimmed Patreon
  * OAuth flow.
  */
 function handleLiturgistsToken() {
@@ -217,9 +216,8 @@ function handleLiturgistsToken() {
       let tokenMapping;
 
       if (token) {
-        const { secret } = await getCreds('jwt');
         try {
-          const { userId } = jwt.verify(token, secret);
+          userId = token;
           const resp = await TokenMapping
             .query(userId)
             .exec()
@@ -293,7 +291,8 @@ async function upsertTokenMapping(tokenMapping) {
     await TokenMapping.update(newTokenMapping)
   } else {
     console.log('Patreon has no existing token mapping; creating one');
-    newTokenMapping.userId = uuidv4();
+    const alphabet = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    newTokenMapping.userId = generate(alphabet, 32);
 
     await TokenMapping.create(newTokenMapping);
   }
@@ -389,13 +388,12 @@ async function init() {
           expiresAt,
         });
 
-        const { secret } = await getCreds('jwt');
-
         // using noTimestamp here makes the token (and thus URLs containing it)
         // a bit shorter, giving us some headroom with podcast clients like
         // Overcast which have a hard limit of 256 chars on feed URL length.
         // Plus, we weren't using the issuedAt ('iat') timestamp anyway.
-        const token = jwt.sign({ userId }, secret, { noTimestamp: true });
+
+        const token = userId;
         const data = {
           liturgistsToken: token,
         };
