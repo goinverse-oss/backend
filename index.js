@@ -598,7 +598,7 @@ async function init() {
         let coverImageUrl, title, description;
         if (collectionObj) {
           ({ title, description } = collectionObj.fields);
-          if (collectionObj.type === 'meditationCategory') {
+          if (collectionObj.sys.contentType.sys.id === 'meditationCategory') {
             title = `The Liturgists - Meditations - ${title}`;
           }
 
