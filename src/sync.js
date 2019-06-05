@@ -4,6 +4,7 @@ const Parser = require('rss-parser');
 const yargs = require('yargs');
 const ProgressBar = require('progress');
 const Sentry = require('@sentry/node');
+const moment = require('moment');
 
 const { getCreds } = require('./creds');
 
@@ -37,7 +38,7 @@ async function getEpisodes(environment, podcast) {
 }
 
 async function parseFeed(feedUrl) {
-  const parser = new Parser({ timeout: 5000 });
+  const parser = new Parser({ timeout: 30000 });
   return parser.parseURL(feedUrl);
 }
 
@@ -217,11 +218,24 @@ async function syncEpisode(
 
   let status = 'unchanged';
   if (!_.isEqual(existingEpisode.fields, episodeJson.fields)) {
-    logProgress(progress, `Updating episode: "${title}"`);
-    status = 'updated';
-    existingEpisode.fields = episodeJson.fields;
-    existingEpisode = await existingEpisode.update();
-    await existingEpisode.publish();
+    // only update if the RSS item has been published
+    // more recently than the Contentful entry
+    if (
+      !existingEpisode.sys.updatedAt ||
+      moment(rssItem.isoDate).isAfter(
+        moment(existingEpisode.sys.updatedAt)
+      )
+    ) {
+      logProgress(progress, `Updating episode: "${title}"`);
+      status = 'updated';
+      // only update fields that are explicitly set in the RSS item
+      existingEpisode.fields = {
+        ...existingEpisode.fields,
+        ...episodeJson.fields,
+      };
+      existingEpisode = await existingEpisode.update();
+      await existingEpisode.publish();
+    }
   }
 
   return { episode: existingEpisode, status };

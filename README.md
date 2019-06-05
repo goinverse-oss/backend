@@ -2,6 +2,19 @@
 
 Description forthcoming.
 
+## Podbean Feed Sync
+
+The sync lambda periodically syncs all podcasts in Contentful that
+have a feed URL defined. If an episode's publication date is newer
+in the feed than in Contentful, the feed data will be treated as
+the correct version. However, this will only ever create or update fields;
+it will never remove them.
+
+Note that, with Podbean, the publication date of an item doesn't appear
+to be updated unless the item is first saved as a draft, then published.
+If an edit is made and published without this intermediate step, the
+`pubDate` in the feed doesn't get updated.
+
 ## Dev setup
 
 1. Obtain and configure AWS credentials
