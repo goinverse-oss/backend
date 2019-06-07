@@ -186,7 +186,7 @@ async function syncEpisode(
   }
 
   [
-    ['imageUrl', 'itunes.image.href'],
+    ['imageUrl', 'itunes.image'],
     ['mediaUrl', 'enclosure.url'],
     ['duration', 'itunes.duration'],
   ].forEach(args => setIfPresent(...args));
