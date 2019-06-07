@@ -217,25 +217,19 @@ async function syncEpisode(
   }
 
   let status = 'unchanged';
-  if (!_.isEqual(existingEpisode.fields, episodeJson.fields)) {
-    // only update if the RSS item has been published
-    // more recently than the Contentful entry
-    if (
-      !existingEpisode.sys.updatedAt ||
-      moment(rssItem.isoDate).isAfter(
-        moment(existingEpisode.sys.updatedAt)
-      )
-    ) {
-      logProgress(progress, `Updating episode: "${title}"`);
-      status = 'updated';
-      // only update fields that are explicitly set in the RSS item
-      existingEpisode.fields = {
-        ...existingEpisode.fields,
-        ...episodeJson.fields,
-      };
-      existingEpisode = await existingEpisode.update();
-      await existingEpisode.publish();
-    }
+
+  // only update fields that are explicitly set in the RSS item
+  const newFields = {
+    ...existingEpisode.fields,
+    ...episodeJson.fields,
+  };
+
+  if (!_.isEqual(existingEpisode.fields, newFields)) {
+    logProgress(progress, `Updating episode: "${title}"`);
+    status = 'updated';
+    existingEpisode.fields = newFields;
+    existingEpisode = await existingEpisode.update();
+    await existingEpisode.publish();
   }
 
   return { episode: existingEpisode, status };
