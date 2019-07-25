@@ -1,0 +1,62 @@
+{
+  "sys": {
+    "type": "Entry",
+    "id": "4J44GPppdkrDuiiQCjZSwT",
+    "space": {
+      "sys": {
+        "type": "Link",
+        "linkType": "Space",
+        "id": "80rg4ikyq3mh"
+      }
+    },
+    "environment": {
+      "sys": {
+        "id": "master",
+        "type": "Link",
+        "linkType": "Environment"
+      }
+    },
+    "contentType": {
+      "sys": {
+        "type": "Link",
+        "linkType": "ContentType",
+        "id": "podcastEpisode"
+      }
+    },
+    "revision": 1,
+    "createdAt": "2019-07-06T01:20:53.302Z",
+    "updatedAt": "2019-07-06T01:20:53.302Z"
+  },
+  "fields": {
+    "title": {
+      "en-US": "Test Episode"
+    },
+    "description": {
+      "en-US": "asdfasgdsagdsgda"
+    },
+    "media": {
+      "en-US": {
+        "sys": {
+          "type": "Link",
+          "linkType": "Asset",
+          "id": "7AcOpTMU6GfKNH0MzJFjaR"
+        }
+      }
+    },
+    "duration": {
+      "en-US": "0:0:4"
+    },
+    "publishedAt": {
+      "en-US": "2019-07-05T12:00-04:00"
+    },
+    "podcast": {
+      "en-US": {
+        "sys": {
+          "type": "Link",
+          "linkType": "Entry",
+          "id": "5WozxaSfgsSLunMw1F8mkQ"
+        }
+      }
+    }
+  }
+}
