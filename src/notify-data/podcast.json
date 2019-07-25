@@ -1,0 +1,75 @@
+{
+  "sys": {
+    "space": {
+      "sys": {
+        "type": "Link",
+        "linkType": "Space",
+        "id": "80rg4ikyq3mh"
+      }
+    },
+    "id": "5WozxaSfgsSLunMw1F8mkQ",
+    "type": "Entry",
+    "createdAt": "2019-03-25T13:05:20.496Z",
+    "updatedAt": "2019-06-07T12:50:37.135Z",
+    "environment": {
+      "sys": {
+        "id": "master",
+        "type": "Link",
+        "linkType": "Environment"
+      }
+    },
+    "revision": 4,
+    "contentType": {
+      "sys": {
+        "type": "Link",
+        "linkType": "ContentType",
+        "id": "podcast"
+      }
+    },
+    "locale": "en-US"
+  },
+  "fields": {
+    "title": "Test-Podcast",
+    "description": "Just for testing.",
+    "image": {
+      "sys": {
+        "space": {
+          "sys": {
+            "type": "Link",
+            "linkType": "Space",
+            "id": "80rg4ikyq3mh"
+          }
+        },
+        "id": "5VAWOmxcZ2PWjYx8lnyN2S",
+        "type": "Asset",
+        "createdAt": "2019-02-27T22:43:45.356Z",
+        "updatedAt": "2019-02-27T22:43:45.356Z",
+        "environment": {
+          "sys": {
+            "id": "master",
+            "type": "Link",
+            "linkType": "Environment"
+          }
+        },
+        "revision": 1,
+        "locale": "en-US"
+      },
+      "fields": {
+        "title": "Reset, large",
+        "file": {
+          "url": "//images.ctfassets.net/80rg4ikyq3mh/5VAWOmxcZ2PWjYx8lnyN2S/f54de8dfa0520674e7cee1d909847101/Untitled",
+          "details": {
+            "size": 446398,
+            "image": {
+              "width": 1600,
+              "height": 1200
+            }
+          },
+          "fileName": "Untitled",
+          "contentType": "image/jpeg"
+        }
+      }
+    },
+    "patronsOnly": false
+  }
+}
