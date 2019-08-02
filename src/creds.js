@@ -23,6 +23,9 @@ const credSpecs = {
   jwt: {
     secret: `/${stage}/JWT_SECRET`,
   },
+  firebase: {
+    serviceAccount: `/${stage}/FIREBASE_SERVICE_ACCOUNT`,
+  },
 };
 
 module.exports.getCreds = async (name) => {
