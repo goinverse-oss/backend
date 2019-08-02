@@ -1,18 +1,24 @@
 const _ = require('lodash');
 const firebase = require('firebase-admin');
 
-firebase.initializeApp({
-  credential: firebase.credential.applicationDefault(),
-});
+const { getCreds } = require('./creds');
+
+let firebaseInitialized = false;
+
+async function initializeFirebase() {
+  if (!firebaseInitialized) {
+    const { serviceAccount } = await getCreds('firebase');
+    firebase.initializeApp({
+      credential: firebase.credential.cert(JSON.parse(serviceAccount)),
+    });
+    firebaseInitialized = true;
+  }
+}
 
 const TOPIC_PUBLIC_MEDIA = 'new-public-media';
 const TOPIC_PATRON_PODCAST = 'new-patron-podcast';
 const TOPIC_PATRON_MEDITATION = 'new-patron-meditation';
 const TOPIC_PATRON_LITURGY = 'new-patron-liturgy';
-
-function getCollection(entry) {
-  
-}
 
 function getTopic(entry, collectionEntry) {
   if (_.get(entry, 'fields.isFreePreview.en-US')) {
@@ -63,16 +69,10 @@ function makeNotification(entry, collectionEntry) {
   };
 }
 
-function notifyNewItem(entry, collectionEntry) {
+module.exports.notifyNewItem = async (entry, collectionEntry) => {
+  await initializeFirebase();
   const message = makeNotification(entry, collectionEntry);
-  return firebase.messaging().send(message)
-    .then(response => console.log('Successfully sent message: ', response))
-    .catch(error => console.error('Error sending message: ', error));
-}
-
-
-if (require.main === module) {
-  const entry = require('./notify-data/podcastEpisode.json');
-  const collectionEntry = require('./notify-data/podcast.json');
-  notifyNewItem(entry, collectionEntry).then(() => process.exit(0));
-}
+  const response = await firebase.messaging().send(message);
+  console.log(`Successfully sent message to topic "${message.topic}": `, response);
+  return response;
+};
