@@ -735,7 +735,13 @@ async function init() {
         }
 
         const entry = req.body;
-        console.log('Webhook payload: ', JSON.stringify(entry, null, 2));
+        const publishedAt = moment(entry.fields.publishedAt['en-US']);
+        const oneDayInMillis = 1000 * 60 * 60 * 24;
+        if (moment().diff(publishedAt) > oneDayInMillis) {
+          res.status(200).json({ status: 'older than one day; not notifying' });
+          return;
+        }
+
         const contentType = entry.sys.contentType.sys.id;
         const collectionField = {
           podcastEpisode: 'podcast',
