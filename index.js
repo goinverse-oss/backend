@@ -732,7 +732,7 @@ async function init() {
         const contentType = entry.sys.contentType.sys.id;
         const collectionField = {
           podcastEpisode: 'podcast',
-          meditation: 'meditationCategory',
+          meditation: 'category',
           liturgyItem: 'liturgy',
         }[contentType];
         const collectionId = entry.fields[collectionField]['en-US'].sys.id;
