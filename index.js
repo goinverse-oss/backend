@@ -758,9 +758,9 @@ async function init() {
             false,
           );
 
-          await notifyNewItem(entry, collectionEntry);
+          const { message } = await notifyNewItem(entry, collectionEntry);
 
-          res.status(200).json({ status: 'success' });
+          res.status(200).json({ status: `notified topic ${message.topic}` });
         } catch (e) {
           console.error(e);
           Sentry.captureException(e);
