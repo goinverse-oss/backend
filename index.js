@@ -727,6 +727,13 @@ async function init() {
     }),
     wrapAsync(
       async (req, res) => {
+        const { webhookVerificationToken } = await getCreds('contentful');
+        const token = req.headers['x-theliturgists-webhook-verification-token'];
+        if (token !== webhookVerificationToken) {
+          res.status(401).json({ error: 'invalid verification token'});
+          return;
+        }
+
         const entry = req.body;
         console.log('Webhook payload: ', JSON.stringify(entry, null, 2));
         const contentType = entry.sys.contentType.sys.id;
