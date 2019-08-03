@@ -46,6 +46,14 @@ function getImageUrl(collectionEntry) {
   return collectionEntry.fields.imageUrl;
 }
 
+function truncate(str, limit = 1024) {
+  if (str.length < limit) {
+    return str;
+  }
+
+  return str.slice(0, limit - 3) + '...';
+}
+
 function makeNotification(entry, collectionEntry) {
   const topic = getTopic(entry, collectionEntry);
   const title = entry.fields.title['en-US'];
@@ -55,7 +63,7 @@ function makeNotification(entry, collectionEntry) {
     topic,
     notification: {
       title: `${title} (${subtitle})`,
-      body: entry.fields.description['en-US'],
+      body: truncate(entry.fields.description['en-US']),
     },
     android: {
       notification: {
