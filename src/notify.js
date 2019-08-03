@@ -74,5 +74,5 @@ module.exports.notifyNewItem = async (entry, collectionEntry) => {
   const message = makeNotification(entry, collectionEntry);
   const response = await firebase.messaging().send(message);
   console.log(`Successfully sent message to topic "${message.topic}": `, response);
-  return response;
+  return { message, response };
 };
