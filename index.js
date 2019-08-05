@@ -16,6 +16,7 @@ const urlParse = require('url-parse');
 
 const { getCreds } = require('./src/creds');
 const TokenMapping = require('./src/TokenMapping');
+const { notifyNewItem } = require('./src/notify');
 
 const stage = process.env.SLS_STAGE;
 
@@ -430,7 +431,8 @@ async function init() {
    *
    * @param {string} path contentful resource path (after environment)
    * @param {object} params contentful query params from request object
-   * @param {string} patreonToken patreon token from request header
+   * @param {object} pledge Patreon pledge API JSON
+   * @param {boolean} filter if false, don't filter by patron pledge (default true)
    * @returns {object} contentful API response
    * @throws {Error} on contentful API error
    *   error object has 'status' and 'json' fields
@@ -715,6 +717,56 @@ async function init() {
         res.set('Content-type', 'application/rss+xml');
         res.status(200).send(xml);
       },
+    ),
+  );
+
+  app.post(
+    '*/contentful-webhook',
+    bodyParser.json({
+      type: 'application/vnd.contentful.management.v1+json',
+    }),
+    wrapAsync(
+      async (req, res) => {
+        const { webhookVerificationToken } = await getCreds('contentful');
+        const token = req.headers['x-theliturgists-webhook-verification-token'];
+        if (token !== webhookVerificationToken) {
+          res.status(401).json({ error: 'invalid verification token'});
+          return;
+        }
+
+        const entry = req.body;
+        const publishedAt = moment(entry.fields.publishedAt['en-US']);
+        const oneDayInMillis = 1000 * 60 * 60 * 24;
+        if (moment().diff(publishedAt) > oneDayInMillis) {
+          res.status(200).json({ status: 'older than one day; not notifying' });
+          return;
+        }
+
+        const contentType = entry.sys.contentType.sys.id;
+        const collectionField = {
+          podcastEpisode: 'podcast',
+          meditation: 'category',
+          liturgyItem: 'liturgy',
+        }[contentType];
+        const collectionId = entry.fields[collectionField]['en-US'].sys.id;
+
+        try {
+          const collectionEntry = await contentfulGet(
+            `entries/${collectionId}`,
+            {},
+            null,
+            false,
+          );
+
+          const { message } = await notifyNewItem(entry, collectionEntry);
+
+          res.status(200).json({ status: `notified topic ${message.topic}` });
+        } catch (e) {
+          console.error(e);
+          Sentry.captureException(e);
+          res.status(500).json({ error: e.message });
+        }
+      }
     ),
   );
 

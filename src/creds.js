@@ -13,6 +13,7 @@ const credSpecs = {
     space: `/${stage}/CONTENTFUL_SPACE`,
     environment: `/${stage}/CONTENTFUL_ENVIRONMENT`,
     accessToken: `/${stage}/CONTENTFUL_ACCESS_TOKEN`,
+    webhookVerificationToken: `/${stage}/CONTENTFUL_WEBHOOK_VERIFICATION_TOKEN`,
   },
   contentfulManagement: {
     accessToken: `/${stage}/CONTENTFUL_MANAGEMENT_ACCESS_TOKEN`,
@@ -22,6 +23,9 @@ const credSpecs = {
   },
   jwt: {
     secret: `/${stage}/JWT_SECRET`,
+  },
+  firebase: {
+    serviceAccount: `/${stage}/FIREBASE_SERVICE_ACCOUNT`,
   },
 };
 

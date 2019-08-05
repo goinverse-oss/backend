@@ -67,6 +67,7 @@ functions:
       - http: GET /patreon/api/{proxy+}
       - http: GET /contentful/{proxy+}
       - http: GET /rss/{proxy+}
+      - http: POST /contentful-webhook
   sync:
     handler: src/sync.handler
     timeout: 300
