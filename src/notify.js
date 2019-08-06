@@ -54,6 +54,14 @@ function truncate(str, limit = 1024) {
   return str.slice(0, limit - 3) + '...';
 }
 
+function stripTags(html) {
+  return html.replace(/<[^>]+>/g, '');
+}
+
+function formatDescription(description) {
+  return truncate(stripTags(description));
+}
+
 function makeNotification(entry, collectionEntry) {
   const topic = getTopic(entry, collectionEntry);
   const title = entry.fields.title['en-US'];
@@ -63,7 +71,7 @@ function makeNotification(entry, collectionEntry) {
     topic,
     notification: {
       title: `${title} (${subtitle})`,
-      body: truncate(entry.fields.description['en-US']),
+      body: formatDescription(entry.fields.description['en-US']),
     },
     android: {
       notification: {
