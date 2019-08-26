@@ -14,7 +14,7 @@
     "@sentry/node": "^4.6.4",
     "aws-param-store": "^2.1.0",
     "aws-sdk": "^2.399.0",
-    "axios": "^0.18.0",
+    "axios": "^0.18.1",
     "body-parser": "^1.18.3",
     "contentful-management": "^5.7.0",
     "dynamodb": "^1.2.0",
