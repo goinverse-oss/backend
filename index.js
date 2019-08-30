@@ -770,6 +770,33 @@ async function init() {
     ),
   );
 
+  app.get(
+    '*/discourse/counts/:topicId',
+    wrapAsync(
+      async (req, res) => {
+        const { baseUrl, token } = await getCreds('discourse');
+        const { topicId } = req.params;
+        const url = `${baseUrl}/t/${topicId}.json`;
+        try {
+          const discourseRes = await axios.get(url, {
+            headers: {
+              'api-key': token,
+              'api-username': 'system',
+            },
+          });
+          const fields = ['like_count', 'posts_count'];
+          res.json(_.pick(discourseRes.data, fields));
+        } catch (err) {
+          // TODO: handle errors better?
+          // don't report to Sentry, though; it's a client-side error,
+          // so if the client is the app, we'll report the error there
+          console.error(err);
+          res.status(err.response.status).end()
+        }
+      },
+    ),
+  )
+
   app.use(
     // eslint-disable-next-line
     async (error, req, res, next) => {
