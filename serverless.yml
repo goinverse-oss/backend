@@ -68,6 +68,7 @@ functions:
       - http: GET /contentful/{proxy+}
       - http: GET /rss/{proxy+}
       - http: POST /contentful-webhook
+      - http: GET /discourse/counts/{proxy+}
   sync:
     handler: src/sync.handler
     timeout: 300

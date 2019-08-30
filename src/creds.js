@@ -27,6 +27,10 @@ const credSpecs = {
   firebase: {
     serviceAccount: `/${stage}/FIREBASE_SERVICE_ACCOUNT`,
   },
+  discourse: {
+    baseUrl: `/${stage}/DISCOURSE_BASE_URL`,
+    token: `/${stage}/DISCOURSE_API_TOKEN`,
+  },
 };
 
 module.exports.getCreds = async (name) => {
