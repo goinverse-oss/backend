@@ -8,6 +8,7 @@ const morgan = require('morgan');
 const _ = require('lodash');
 const Sentry = require('@sentry/node');
 const { patreon: patreonAPI } = require('@theliturgists/patreon');
+const Pledge = require('@theliturgists/patreon-pledge');
 const RSS = require('rss');
 const striptags = require('striptags');
 const generate = require('nanoid/generate');
@@ -21,22 +22,14 @@ const { notifyNewItem } = require('./src/notify');
 const stage = process.env.SLS_STAGE;
 
 function canAccessPodcast(pledge, podcast) {
-  return (
-    _.get(podcast.fields, 'minimumPledgeDollars', null) === null
-      || (
-        !!pledge
-          && podcast.fields.minimumPledgeDollars * 100 <= pledge.amount_cents
-      )
+  const patronsOnly = _.get(podcast.fields, 'patronsOnly', false);
+  return !patronsOnly || (
+    pledge && pledge.canAccessPatronPodcasts()
   );
 }
 
 function canAccessPatronMedia(pledge) {
-  // Patrons with the $5 reward tier or above
-  // get access to both Meditations and Liturgies
-  // in addition to patrons-only podcasts.
-  const minMeditationsPledgeCents = 500;
-  const amount = _.get(pledge, 'amount_cents', 0);
-  return amount >= minMeditationsPledgeCents;
+  return pledge && pledge.canAccessMeditations();
 }
 
 function canAccess(pledge, item, podcasts) {
@@ -51,7 +44,7 @@ function canAccess(pledge, item, podcasts) {
   return true;
 }
 
-async function getPatreonUser(token) {
+async function getPatreonUser(token, opts = { raw: false }) {
   const client = patreonAPI(token);
   let resp;
   try {
@@ -70,6 +63,9 @@ async function getPatreonUser(token) {
   }
 
   const { store, rawJson } = resp;
+  if (opts.raw) {
+    return rawJson;
+  }
   return store.find('user', rawJson.data.id);
 }
 
@@ -79,12 +75,8 @@ async function getPledge(patreon) {
     return null;
   }
 
-  const user = await getPatreonUser(token);
-
-  return _.find(
-    user.pledges,
-    p => (p.reward.campaign.url === campaignUrl),
-  );
+  const user = await getPatreonUser(token, { raw: true });
+  return new Pledge(user);
 }
 
 function filterEntry(entry, pledge, podcasts) {
@@ -250,6 +242,7 @@ function handleLiturgistsToken() {
             req.pledge = await getPledge({ token: newPatreonToken, campaignUrl });
           }
         } catch (err) {
+          console.log('Error retrieving token mapping:', err);
           if (tokenMappingObj) {
             console.log(
               `Invalid token for patreon user ${tokenMapping.patreonUserId}; ` +
@@ -497,7 +490,7 @@ async function init() {
           res.status(200).json(data);
         } catch (e) {
           console.error(e);
-          res.status(e.status).json(e.json);
+          res.status(e.status || 500).json(e.json || { error: 'Unkown error' });
         }
       },
     ),
