@@ -143,7 +143,8 @@
       "Action": [
         "route53:ChangeResourceRecordSets",
         "route53:ListHostedZones",
-        "route53:ListResourceRecordSets"
+        "route53:ListResourceRecordSets",
+        "route53:GetHostedZone"
       ],
       "Resource": "*"
     },
@@ -153,20 +154,21 @@
         "acm:AddTagsToCertificate",
         "acm:RequestCertificate",
         "acm:DescribeCertificate",
-        "acm:DeleteCertificate"
+        "acm:DeleteCertificate",
+        "acm:ListCertificates"
       ],
       "Resource": "*"
     },
     {
       "Effect": "Allow",
       "Action": [
-        "apigateway:GET",
-        "apigateway:POST",
-        "apigateway:DELETE"
+        "apigateway:*"
       ],
       "Resource": [
         "arn:aws:apigateway:*::/domainnames",
-        "arn:aws:apigateway:*::/domainnames/*"
+        "arn:aws:apigateway:*::/domainnames/*",
+        "arn:aws:apigateway:*::/domainnames/*/*",
+        "arn:aws:apigateway:*::/domainnames/*/*/*"
       ]
     },
     {
