@@ -8,6 +8,7 @@ provider:
   tracing:
     lambda: true
   environment:
+    SLS_NAMESPACE: ${self:custom.namespace}
     SLS_STAGE: ${self:custom.stage}
     DYNAMODB_TABLE_TOKENS: ${self:custom.dynamodbTables.tokens}
   iamRoleStatements:
