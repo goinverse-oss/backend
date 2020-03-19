@@ -72,20 +72,27 @@ function stripTags(html) {
   return html.replace(/<[^>]+>/g, '');
 }
 
-function formatDescription(description) {
-  return truncate(stripTags(description));
+function formatSubtitle(collectionEntry) {
+  // collection is only missing for uncategorized meditations
+  const title = _.get(collectionEntry, 'fields.title', 'Uncategorized');
+
+  if (collectionEntry.sys.contentType.sys.id === 'meditationCategory') {
+    return `Meditation: ${title}`;
+  }
+  return title;
 }
 
 function makeNotification(entry, collectionEntry) {
   const topic = getTopic(entry, collectionEntry);
   const title = entry.fields.title['en-US'];
-  const subtitle = collectionEntry.fields.title;
+  const subtitle = formatSubtitle(collectionEntry);
+  const description = formatDescription(entry.fields.description['en-US']);
 
   return {
     topic,
     notification: {
-      title: `${title} (${subtitle})`,
-      body: formatDescription(entry.fields.description['en-US']),
+      title,
+      body: `${subtitle}\n\n${description}`,
     },
     android: {
       notification: {
