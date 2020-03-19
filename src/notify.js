@@ -1,5 +1,7 @@
 const _ = require('lodash');
 const firebase = require('firebase-admin');
+const isHtml = require('is-html');
+const htmlToText = require('html-to-text');
 
 const { getCreds } = require('./creds');
 
@@ -68,8 +70,12 @@ function truncate(str, limit = 1024) {
   return str.slice(0, limit - 3) + '...';
 }
 
-function stripTags(html) {
-  return html.replace(/<[^>]+>/g, '');
+function formatDescription(description) {
+  let text = description;
+  if (isHtml(description)) {
+    text = htmlToText.fromString(description);
+  }
+  return truncate(text);
 }
 
 function formatSubtitle(collectionEntry) {
