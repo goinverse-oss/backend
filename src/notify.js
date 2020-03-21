@@ -1,5 +1,7 @@
 const _ = require('lodash');
 const firebase = require('firebase-admin');
+const isHtml = require('is-html');
+const htmlToText = require('html-to-text');
 
 const { getCreds } = require('./creds');
 
@@ -20,7 +22,7 @@ const TOPIC_PATRON_PODCAST = 'new-patron-podcast';
 const TOPIC_PATRON_MEDITATION = 'new-patron-meditation';
 const TOPIC_PATRON_LITURGY = 'new-patron-liturgy';
 
-function getTopic(entry, collectionEntry) {
+function getUnscopedTopic(entry, collectionEntry) {
   if (_.get(entry, 'fields.isFreePreview.en-US')) {
     return TOPIC_PUBLIC_MEDIA;
   }
@@ -36,6 +38,20 @@ function getTopic(entry, collectionEntry) {
     return collectionEntry.fields.minimumPledgeDollars ? TOPIC_PATRON_PODCAST : TOPIC_PUBLIC_MEDIA;
   }
   return TOPIC_PUBLIC_MEDIA;
+}
+
+function getTopic(entry, collectionEntry) {
+  const topic = getUnscopedTopic(entry, collectionEntry);
+  const namespace = process.env.SLS_NAMESPACE;
+  const stage = process.env.SLS_STAGE;
+  let scope;
+  if (namespace === stage) {
+    // avoid unnecessary length of "staging-staging"
+    scope = stage;
+  } else {
+    scope = `${namespace}-${stage}`;
+  }
+  return `${topic}-${scope}`;
 }
 
 function getImageUrl(collectionEntry) {
@@ -54,24 +70,35 @@ function truncate(str, limit = 1024) {
   return str.slice(0, limit - 3) + '...';
 }
 
-function stripTags(html) {
-  return html.replace(/<[^>]+>/g, '');
+function formatDescription(description) {
+  let text = description;
+  if (isHtml(description)) {
+    text = htmlToText.fromString(description);
+  }
+  return truncate(text);
 }
 
-function formatDescription(description) {
-  return truncate(stripTags(description));
+function formatSubtitle(collectionEntry) {
+  // collection is only missing for uncategorized meditations
+  const title = _.get(collectionEntry, 'fields.title', 'Uncategorized');
+
+  if (collectionEntry.sys.contentType.sys.id === 'meditationCategory') {
+    return `Meditation: ${title}`;
+  }
+  return title;
 }
 
 function makeNotification(entry, collectionEntry) {
   const topic = getTopic(entry, collectionEntry);
   const title = entry.fields.title['en-US'];
-  const subtitle = collectionEntry.fields.title;
+  const subtitle = formatSubtitle(collectionEntry);
+  const description = formatDescription(entry.fields.description['en-US']);
 
   return {
     topic,
     notification: {
-      title: `${title} (${subtitle})`,
-      body: formatDescription(entry.fields.description['en-US']),
+      title,
+      body: `${subtitle}\n\n${description}`,
     },
     android: {
       notification: {
