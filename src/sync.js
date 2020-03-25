@@ -225,11 +225,17 @@ async function syncEpisode(
   };
 
   if (!_.isEqual(existingEpisode.fields, newFields)) {
-    logProgress(progress, `Updating episode: "${title}"`);
-    status = 'updated';
-    existingEpisode.fields = newFields;
-    existingEpisode = await existingEpisode.update();
-    await existingEpisode.publish();
+    const publishedAt = moment(existingEpisode.fields.publishedAt['en-US']);
+    const oneWeekInMillis = 1000 * 60 * 60 * 24 * 7;
+    if (moment().diff(publishedAt) > oneWeekInMillis) {
+      logProgress(progress, `Not updating episode: "${title}" (older than one week)`);
+    } else {
+      logProgress(progress, `Updating episode: "${title}"`);
+      status = 'updated';
+      existingEpisode.fields = newFields;
+      existingEpisode = await existingEpisode.update();
+      await existingEpisode.publish();
+    }
   }
 
   return { episode: existingEpisode, status };
