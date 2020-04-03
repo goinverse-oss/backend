@@ -465,6 +465,7 @@ async function init() {
     try {
       return await filterData(data, pledge);
     } catch (e) {
+      Sentry.captureException(e);
       e.json = {
         error: (
           'Error verifying Patreon status. '
