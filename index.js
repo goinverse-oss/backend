@@ -80,6 +80,21 @@ async function getPledge(patreon) {
 }
 
 function filterEntry(entry, pledge, podcasts) {
+  if (entry.sys.contentType.sys.id === 'podcastEpisode') {
+    const podcast = podcasts[entry.fields.podcast.sys.id];
+    if (!podcast) {
+      // Note: `podcast` can be `null` here if the podcast
+      // is assigned but isn't published. Such episodes are
+      // probably published by accident and should not be
+      // accessible to any user, so we return null here
+      // so that the caller knows to omit this entry.
+      const msg = `Podcast episode without a podcast: ${entry.fields.title}`;
+      console.error(msg);
+      Sentry.captureMessage(msg);
+      return null;
+    }
+  }
+
   if (canAccess(pledge, entry, podcasts)) {
     return _.set(entry, 'fields.patronsOnly', false);
   }
@@ -112,7 +127,9 @@ async function filterData(contentfulData, pledge) {
 
   const d = {
     ...contentfulData,
-    items: contentfulData.items.map(item => filterEntry(item, pledge, podcasts)),
+    items: contentfulData.items
+      .map(item => filterEntry(item, pledge, podcasts))
+      .filter(entry => !!entry),
   };
   return d;
 }
