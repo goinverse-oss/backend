@@ -80,7 +80,8 @@ async function getPledge(patreon) {
 }
 
 function filterEntry(entry, pledge, podcasts) {
-  if (entry.sys.contentType.sys.id === 'podcastEpisode') {
+  const contentType = _.get(entry, 'sys.contentType.sys.id');
+  if (contentType === 'podcastEpisode') {
     const podcast = podcasts[entry.fields.podcast.sys.id];
     if (!podcast) {
       // Note: `podcast` can be `null` here if the podcast
