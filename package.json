@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@hapi/joi": "^15.0.3",
-    "@sentry/node": "^5.12.0",
+    "@sentry/node": "^5.15.4",
     "@theliturgists/patreon": "^0.4.1-2",
     "@theliturgists/patreon-pledge": "^0.2.0",
     "aws-param-store": "^2.1.0",

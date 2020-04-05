@@ -318,6 +318,7 @@ function redactUrl(url) {
 
 async function init() {
   const sentry = await getCreds('sentry');
+  sentry.environment = stage;
 
   Sentry.init(sentry);
   Sentry.configureScope((scope) => {
