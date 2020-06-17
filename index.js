@@ -8,7 +8,6 @@ const morgan = require('morgan');
 const _ = require('lodash');
 const Sentry = require('@sentry/node');
 const { patreon: patreonAPI } = require('@theliturgists/patreon');
-const Pledge = require('@theliturgists/patreon-pledge');
 const RSS = require('rss');
 const striptags = require('striptags');
 const generate = require('nanoid/generate');
@@ -18,6 +17,7 @@ const urlParse = require('url-parse');
 const { getCreds } = require('./src/creds');
 const TokenMapping = require('./src/TokenMapping');
 const { notifyNewItem } = require('./src/notify');
+const Pledge = require('./src/pledge');
 
 const stage = process.env.SLS_STAGE;
 

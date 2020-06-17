@@ -13,8 +13,8 @@
   "dependencies": {
     "@hapi/joi": "^15.0.3",
     "@sentry/node": "^5.15.4",
+    "@theliturgists/jsonapi-datastore": "^0.4.0-beta-3",
     "@theliturgists/patreon": "^0.4.1-2",
-    "@theliturgists/patreon-pledge": "^0.2.0",
     "aws-param-store": "^2.1.0",
     "aws-sdk": "^2.399.0",
     "axios": "^0.18.1",
