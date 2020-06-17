@@ -3,7 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "sync": "sls invoke -f sync",
+    "dev:sync": "node ./src/sync.js",
+    "sync": "sls invoke -f sync -l",
     "lint": "eslint",
     "deploy": "sls deploy",
     "auth-deploy": "npm run auth-sls deploy",

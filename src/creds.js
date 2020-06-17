@@ -8,6 +8,8 @@ const credSpecs = {
     client_id: `/${stage}/PATREON_CLIENT_ID`,
     client_secret: `/${stage}/PATREON_CLIENT_SECRET`,
     campaign_url: `/${stage}/PATREON_CAMPAIGN_URL`,
+    creator_token: `/${stage}/PATREON_CREATOR_TOKEN`,
+    campaign_id: `/${stage}/PATREON_CAMPAIGN_ID`,
   },
   contentful: {
     space: `/${stage}/CONTENTFUL_SPACE`,
