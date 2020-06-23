@@ -78,6 +78,9 @@ functions:
           rate: cron(0 12 * * ? *)   # daily, 8AM EDT
           enabled: ${self:custom.syncEnabled.${self:custom.stage}}
 
+plugins:
+  - serverless-offline
+
 custom:
   service: theliturgists-backend
   namespace: ${env:SLS_NAMESPACE, env:USER}
