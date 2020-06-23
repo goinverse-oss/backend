@@ -1,89 +1,92 @@
-import { JsonApiDataStore } from '@theliturgists/jsonapi-datastore';
+const { JsonApiDataStore } = require('@theliturgists/jsonapi-datastore');
+const contentful = require('contentful');
+const _ = require('lodash');
+
+const { getCreds } = require('./creds');
 
 const CAMPAIGN_URL = 'https://www.patreon.com/theliturgists';
 
-const OLD_TIER_REWARD_IDS = {
-  NON_MEMBER: '-1',
-  MEMBER: '1',
+module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
+  let pledge;
+  let tier;
+  let podcasts;
+
+  if (patreonUserData) {
+    const data = new JsonApiDataStore();
+    data.sync(patreonUserData);
+
+    const userId = patreonUserData.data.id;
+    const user = data.find('user', userId);
+    const pledges = user.pledges.filter(
+      p => p.reward.campaign.url === CAMPAIGN_URL,
+    );
+    if (pledges.length > 0) {
+      pledge = pledges[0];
+
+      const { space, environment, accessToken } = await getCreds('contentful');
+      const client = contentful.createClient({
+        space, environment, accessToken
+      });
+
+      // TODO: figure out why the tier isn't getting set
+      const data = await client.getEntries({
+        content_type: 'tier',
+        'fields.patreonId': pledge.reward.id,
+      })
+      console.log('data:', data);
+      const tiers = data.items;
+      console.log('tiers:', tiers);
+      if (tiers.length > 0) {
+        tier = tiers[0];
+        podcasts = data.includes.Entry;
+      }
+    }
+  }
+
+  return new Pledge(pledge, tier, podcasts);
 };
 
-const NEW_TIER_REWARD_IDS = {
-  BE_A_LITURGIST: '3956585',
-  GROW_WITH_US: '3956587',
-  TALK_WITH_US: '3956589',
-  ON_THE_GUEST_LIST: '3956592',
-};
-
-export default class Pledge {
+class Pledge {
   /**
    * Patreon pledge data with some useful methods.
    * @param {object} patreonUserData json:api data for a Patreon user,
    *   with "pledges" relationship in the "includes"
    *   i.e. fetched from https://patreon.com/api/current_user?include=pledges
    */
-  constructor(patreonUserData) {
-    this.pledge = null;
-
-    if (patreonUserData) {
-      const data = new JsonApiDataStore();
-      data.sync(patreonUserData);
-
-      const userId = patreonUserData.data.id;
-      const user = data.find('user', userId);
-      const pledges = user.pledges.filter(
-        p => p.reward.campaign.url === CAMPAIGN_URL,
-      );
-      if (pledges.length > 0) {
-        this.pledge = pledges[0];
-      }
-    }
-  }
-
-  _isOldTierPledge() {
-    return this.pledge?.reward?.id === OLD_TIER_REWARD_IDS.MEMBER;
-  }
-
-  _isNewTierPledge() {
-    const rewardId = this.pledge?.reward?.id;
-    return rewardId && Object.values(NEW_TIER_REWARD_IDS).find(
-      newTierId => newTierId === rewardId,
-    );
+  constructor(pledge, tier, podcasts) {
+    this.pledge = pledge;
+    this.tier = tier;
+    this.podcasts = podcasts;
   }
 
   isPatron() {
-    if (!this.pledge) {
-      return false;
-    }
-    return this.pledge?.reward?.id !== OLD_TIER_REWARD_IDS.NON_MEMBER;
+    return (this.pledge && this.tier);
   }
 
-  canAccessPatronPodcasts() {
-    if (this._isOldTierPledge()) {
-      const minOldPatronPodcastsPledge = 100;
-      return this.pledge.amount_cents >= minOldPatronPodcastsPledge;
-    }
+  canAccessPodcast(podcast) {
+    // access is granted if the podcast is not patrons-only or if 
+    // it is present in the tier's list of podcasts.
+    return !podcast.fields.patronsOnly || this.tier && !!_.find(
+      this.podcasts,
+      tierPodcast => podcast.sys.id === tierPodcast.sys.id
+    );
+  }
 
-    if (this._isNewTierPledge()) {
-      const minNewPatronPodcastsPledge = 300;
-      return this.pledge.amount_cents >= minNewPatronPodcastsPledge;
+  canAccessMeditations() {
+    if (this.tier) {
+      return this.tier.fields.canAccessMeditations;
     }
 
     return false;
   }
 
-  canAccessMeditations() {
-    if (this._isOldTierPledge()) {
-      // const minOldMeditationsPledge = 500;
-      const minOldMeditationsPledge = 100;
-      return this.pledge.amount_cents >= minOldMeditationsPledge;
-    }
-
-    if (this._isNewTierPledge()) {
-      // const minNewMeditationsPledge = 1000;
-      const minNewMeditationsPledge = 300;
-      return this.pledge.amount_cents >= minNewMeditationsPledge;
+  canAccessLiturgies() {
+    if (this.tier) {
+      return this.tier.fields.canAccessLiturgies;
     }
 
     return false;
   }
 }
+
+module.exports.default = Pledge;
