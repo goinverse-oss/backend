@@ -43,7 +43,7 @@ module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
     }
   }
 
-  return new Pledge(pledge, tier, podcasts);
+  return new Pledge(tier, podcasts);
 };
 
 class Pledge {
@@ -53,20 +53,27 @@ class Pledge {
    *   with "pledges" relationship in the "includes"
    *   i.e. fetched from https://patreon.com/api/current_user?include=pledges
    */
-  constructor(pledge, tier, podcasts) {
-    this.pledge = pledge;
+  constructor(tier, podcasts) {
     this.tier = tier;
     this.podcasts = podcasts;
   }
 
   isPatron() {
-    return (this.pledge && this.tier);
+    return !!this.tier;
   }
 
   canAccessPodcast(podcast) {
     // access is granted if the podcast is not patrons-only or if 
     // it is present in the tier's list of podcasts.
-    return !podcast.fields.patronsOnly || this.tier && !!_.find(
+    if (!podcast.fields.patronsOnly) {
+      return true;
+    }
+
+    if (!this.tier || !this.podcasts) {
+      return false;
+    }
+
+    return !!_.find(
       this.podcasts,
       tierPodcast => podcast.sys.id === tierPodcast.sys.id
     );
@@ -89,4 +96,4 @@ class Pledge {
   }
 }
 
-module.exports.default = Pledge;
+module.exports.Pledge = Pledge;
