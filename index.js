@@ -90,6 +90,10 @@ async function getPledge(patreon) {
 
 function filterEntry(entry, pledge, podcasts) {
   const contentType = _.get(entry, 'sys.contentType.sys.id');
+  if (!_.includes(['podcastEpisode', 'meditation', 'liturgyItem'], contentType)) {
+    return entry;
+  }
+
   if (contentType === 'podcastEpisode') {
     const podcast = podcasts[entry.fields.podcast.sys.id];
     if (!podcast) {

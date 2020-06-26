@@ -8,7 +8,8 @@
     "lint": "eslint",
     "deploy": "sls deploy",
     "auth-deploy": "npm run auth-sls deploy",
-    "auth-sls": "assume-role theliturgists-deploy serverless"
+    "auth-sls": "assume-role theliturgists-deploy serverless",
+    "test": "jest"
   },
   "dependencies": {
     "@hapi/joi": "^15.0.3",
@@ -47,6 +48,7 @@
   "devDependencies": {
     "eslint": "^5.13.0",
     "eslint-config-airbnb-base": "^13.1.0",
-    "eslint-plugin-import": "^2.16.0"
+    "eslint-plugin-import": "^2.16.0",
+    "jest": "^26.1.0"
   }
 }
