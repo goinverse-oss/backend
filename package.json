@@ -9,7 +9,8 @@
     "deploy": "sls deploy",
     "auth-deploy": "npm run auth-sls deploy",
     "auth-sls": "assume-role theliturgists-deploy serverless",
-    "test": "jest"
+    "test": "jest",
+    "test:ci": "jest --ci --reporters=default --reporters=jest-junit"
   },
   "dependencies": {
     "@hapi/joi": "^15.0.3",
@@ -49,6 +50,12 @@
     "eslint": "^5.13.0",
     "eslint-config-airbnb-base": "^13.1.0",
     "eslint-plugin-import": "^2.16.0",
-    "jest": "^26.1.0"
+    "jest": "^26.1.0",
+    "jest-junit": "^11.0.1"
+  },
+  "jest-junit": {
+    "suiteNameTemplate": "{filepath}",
+    "classNameTemplate": "{classname}",
+    "titleTemplate": "{title}"
   }
 }
