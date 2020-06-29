@@ -62,11 +62,14 @@ class Pledge {
     return !!this.tier;
   }
 
-  getPodcastTitles() {
+  getPodcasts() {
     if (!this.podcasts) {
       return [];
     }
-    return this.podcasts.map(podcast => podcast.fields.title)
+    return this.podcasts.map(podcast => ({
+      id: podcast.sys.id,
+      title: podcast.fields.title,
+    }));
   }
 
   canAccessPodcast(podcast) {

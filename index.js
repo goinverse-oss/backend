@@ -837,7 +837,7 @@ async function init() {
     wrapAsync(
       async (req, res) => {
         res.json({
-          podcastTitles: req.pledge.getPodcastTitles(),
+          podcasts: req.pledge.getPodcasts(),
           canAccessMeditations: req.pledge.canAccessMeditations(),
           canAccessLiturgies: req.pledge.canAccessLiturgies(),
           canListenAdFree: req.pledge.canListenAdFree(),
