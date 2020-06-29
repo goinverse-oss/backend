@@ -97,14 +97,17 @@ describe('Pledge', () => {
         }
       }
     ));
-    const titles = [0, 1, 2].map(i => `Podcast ${i}`);
+    const expectedPodcasts = [0, 1, 2].map(i => ({
+      id: `podcast${i}`,
+      title: `Podcast ${i}`,
+    }));
     const tier = {};  // not actually used; just can't be null
     const pledge = new Pledge(tier, podcasts);
-    expect(pledge.getPodcastTitles()).toStrictEqual(titles);
+    expect(pledge.getPodcasts()).toStrictEqual(expectedPodcasts);
   })
 
   it('retrieves podcast titles with no podcasts', () => {
     const pledge = new Pledge();
-    expect(pledge.getPodcastTitles()).toEqual([]);
+    expect(pledge.getPodcasts()).toEqual([]);
   });
 });
