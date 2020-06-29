@@ -62,6 +62,10 @@ class Pledge {
     return !!this.tier;
   }
 
+  getPodcastTitles() {
+    return this.podcasts.map(podcast => podcast.fields.title)
+  }
+
   canAccessPodcast(podcast) {
     // access is granted if the podcast is not patrons-only or if 
     // it is present in the tier's list of podcasts.
@@ -90,6 +94,14 @@ class Pledge {
   canAccessLiturgies() {
     if (this.tier) {
       return this.tier.fields.canAccessLiturgies;
+    }
+
+    return false;
+  }
+
+  canListenAdFree() {
+    if (this.tier) {
+      return this.tier.fields.adFreeListening;
     }
 
     return false;

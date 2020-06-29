@@ -23,18 +23,21 @@ describe('Pledge', () => {
     ['meditations', false],
     ['liturgies', true],
     ['liturgies', false],
-  ].forEach(([resource, allow]) => {
-    const Resource = resource[0].toUpperCase() + resource.slice(1);
-    const predicateName = `canAccess${Resource}`;
+    ['adfree', true, 'adFreeListening', 'canListenAdFree'],
+    ['adfree', false, 'adFreeListening', 'canListenAdFree']
+  ].forEach(([resource, allow, field, predicate]) => {
+    const Resource = (resource[0].toUpperCase() + resource.slice(1));
+    const predicateName = predicate || `canAccess${Resource}`;
     const verb = allow ? 'allows' : 'denies';
     it(`${verb} access to ${resource} based on tier`, () => {
       const defaults = {
         canAccessMeditations: false,
         canAccessLiturgies: false,
+        adFreeListening: false,
       };
       const fields = {
         ...defaults,
-        [predicateName]: allow,
+        [field || predicateName]: allow,
       };
       const tier = { fields };
       const pledge = new Pledge(tier, []);
@@ -81,4 +84,22 @@ describe('Pledge', () => {
     const pledge = new Pledge(tier, []);
     expect(pledge.canAccessPodcast(podcast)).toBe(true);
   });
+
+  it('retrieves podcast titles', () => {
+    const podcasts = [0, 1, 2].map(i => (
+      {
+        sys: {
+          id: `podcast${i}`,
+        },
+        fields: {
+          title: `Podcast ${i}`,
+          patronsOnly: true
+        }
+      }
+    ));
+    const titles = [0, 1, 2].map(i => `Podcast ${i}`);
+    const tier = {};  // not actually used; just can't be null
+    const pledge = new Pledge(tier, podcasts);
+    expect(pledge.getPodcastTitles()).toStrictEqual(titles);
+  })
 });
