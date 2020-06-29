@@ -17,7 +17,7 @@ const urlParse = require('url-parse');
 const { getCreds } = require('./src/creds');
 const TokenMapping = require('./src/TokenMapping');
 const { notifyNewItem } = require('./src/notify');
-const { fetchPledge } = require('./src/pledge');
+const { fetchPledge, Pledge } = require('./src/pledge');
 
 const stage = process.env.SLS_STAGE;
 
@@ -288,6 +288,9 @@ function handleLiturgistsToken() {
           });
           return;
         }
+      } else {
+        // pledge with no data == no access
+        req.pledge = new Pledge();
       }
 
       next();
@@ -826,7 +829,22 @@ async function init() {
         }
       },
     ),
-  )
+  );
+
+  app.get(
+    '*/patron-pledge',
+    handleLiturgistsToken(),
+    wrapAsync(
+      async (req, res) => {
+        res.json({
+          podcastTitles: req.pledge.getPodcastTitles(),
+          canAccessMeditations: req.pledge.canAccessMeditations(),
+          canAccessLiturgies: req.pledge.canAccessLiturgies(),
+          canListenAdFree: req.pledge.canListenAdFree(),
+        })
+      }
+    )
+  );
 
   app.use(
     // eslint-disable-next-line

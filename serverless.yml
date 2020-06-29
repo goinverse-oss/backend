@@ -70,6 +70,7 @@ functions:
       - http: GET /rss/{proxy+}
       - http: POST /contentful-webhook
       - http: GET /discourse/counts/{proxy+}
+      - http: GET /patron-pledge
   sync:
     handler: src/sync.handler
     timeout: 300

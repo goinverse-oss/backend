@@ -63,6 +63,9 @@ class Pledge {
   }
 
   getPodcastTitles() {
+    if (!this.podcasts) {
+      return [];
+    }
     return this.podcasts.map(podcast => podcast.fields.title)
   }
 

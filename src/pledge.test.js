@@ -102,4 +102,9 @@ describe('Pledge', () => {
     const pledge = new Pledge(tier, podcasts);
     expect(pledge.getPodcastTitles()).toStrictEqual(titles);
   })
+
+  it('retrieves podcast titles with no podcasts', () => {
+    const pledge = new Pledge();
+    expect(pledge.getPodcastTitles()).toEqual([]);
+  });
 });
