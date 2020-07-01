@@ -8,7 +8,6 @@ const morgan = require('morgan');
 const _ = require('lodash');
 const Sentry = require('@sentry/node');
 const { patreon: patreonAPI } = require('@theliturgists/patreon');
-const Pledge = require('@theliturgists/patreon-pledge');
 const RSS = require('rss');
 const striptags = require('striptags');
 const generate = require('nanoid/generate');
@@ -18,18 +17,28 @@ const urlParse = require('url-parse');
 const { getCreds } = require('./src/creds');
 const TokenMapping = require('./src/TokenMapping');
 const { notifyNewItem } = require('./src/notify');
+const { fetchPledge, Pledge } = require('./src/pledge');
 
 const stage = process.env.SLS_STAGE;
 
 function canAccessPodcast(pledge, podcast) {
   const patronsOnly = _.get(podcast.fields, 'patronsOnly', false);
   return !patronsOnly || (
-    pledge && pledge.canAccessPatronPodcasts()
+    pledge && pledge.canAccessPodcast(podcast)
   );
 }
 
-function canAccessPatronMedia(pledge) {
-  return pledge && pledge.canAccessMeditations();
+function canAccessPatronMedia(pledge, contentType) {
+  if (!pledge) {
+    return false;
+  }
+  if (contentType === 'meditation') {
+    return pledge.canAccessMeditations();
+  }
+  if (contentType === 'liturgyItem') {
+    return pledge.canAccessLiturgies();
+  }
+  throw new Error(`Unexpected contentType ${contentType}`);
 }
 
 function canAccess(pledge, item, podcasts) {
@@ -39,7 +48,7 @@ function canAccess(pledge, item, podcasts) {
     return canAccessPodcast(pledge, podcast);
   }
   if (contentType === 'meditation' || contentType === 'liturgyItem') {
-    return canAccessPatronMedia(pledge);
+    return canAccessPatronMedia(pledge, contentType);
   }
   return true;
 }
@@ -76,11 +85,15 @@ async function getPledge(patreon) {
   }
 
   const user = await getPatreonUser(token, { raw: true });
-  return new Pledge(user);
+  return await fetchPledge(user);
 }
 
 function filterEntry(entry, pledge, podcasts) {
   const contentType = _.get(entry, 'sys.contentType.sys.id');
+  if (!_.includes(['podcastEpisode', 'meditation', 'liturgyItem'], contentType)) {
+    return entry;
+  }
+
   if (contentType === 'podcastEpisode') {
     const podcast = podcasts[entry.fields.podcast.sys.id];
     if (!podcast) {
@@ -255,6 +268,7 @@ function handleLiturgistsToken() {
           try {
             req.pledge = await getPledge({ token: patreonToken, campaignUrl });
           } catch(err) {
+            console.log('Error retrieving pledge: ', err);
             // try to refresh in case the token has expired
             const newPatreonToken = await refreshPatreonToken(tokenMapping);
             req.pledge = await getPledge({ token: newPatreonToken, campaignUrl });
@@ -274,6 +288,9 @@ function handleLiturgistsToken() {
           });
           return;
         }
+      } else {
+        // pledge with no data == no access
+        req.pledge = new Pledge();
       }
 
       next();
@@ -517,10 +534,14 @@ async function init() {
   );
 
   async function canAccessFeed(collectionObj, pledge) {
-    if (collectionObj.sys.contentType.sys.id === 'podcast') {
+    const collectionType = collectionObj.sys.contentType.sys.id;
+    if (collectionType === 'podcast') {
       return canAccessPodcast(pledge, collectionObj);
     }
-    return canAccessPatronMedia(pledge);
+    if (collectionType !== 'meditationCategory') {
+      throw new Error(`Unknown feed collection type: ${collectionType}`);
+    }
+    return canAccessPatronMedia(pledge, 'meditation');
   }
 
   function getImageUrl(collectionObj) {
@@ -595,7 +616,7 @@ async function init() {
         if (collection === 'meditationCategory' && collectionId === 'all') {
           // there's no actual meditation category for 'all';
           // just check if the user can access meditations in general.
-          access = canAccessPatronMedia(req.pledge);
+          access = canAccessPatronMedia(req.pledge, 'meditation');
         } else {
           collectionObj = await contentfulGet(
             `entries/${collectionId}`,
@@ -808,7 +829,22 @@ async function init() {
         }
       },
     ),
-  )
+  );
+
+  app.get(
+    '*/patron-pledge',
+    handleLiturgistsToken(),
+    wrapAsync(
+      async (req, res) => {
+        res.json({
+          podcasts: req.pledge.getPodcasts(),
+          canAccessMeditations: req.pledge.canAccessMeditations(),
+          canAccessLiturgies: req.pledge.canAccessLiturgies(),
+          canListenAdFree: req.pledge.canListenAdFree(),
+        })
+      }
+    )
+  );
 
   app.use(
     // eslint-disable-next-line

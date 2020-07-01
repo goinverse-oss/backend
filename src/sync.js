@@ -5,8 +5,15 @@ const yargs = require('yargs');
 const ProgressBar = require('progress');
 const Sentry = require('@sentry/node');
 const moment = require('moment');
+const axios = require('axios');
+const qs = require('qs');
 
 const { getCreds } = require('./creds');
+
+// https://github.com/axios/axios/issues/1111#issuecomment-634632309
+axios.defaults.paramsSerializer = function(params) {
+  return qs.stringify(params, { indices: false }); // param=value1&param=value2
+};
 
 /* eslint-disable no-restricted-syntax */
 /* eslint-disable no-await-in-loop */
@@ -50,21 +57,17 @@ const makeLink = entry => ({
   },
 });
 
-const withType = (value, type = null) => {
-  const data = type === null ? value : {
-    type,
-    value,
-  };
-  return { 'en-US': data };
+const withLocale = (value) => {
+  return { 'en-US': value };
 };
 
 
 async function createSeason(environment, podcast, number) {
   const seasonJson = {
     fields: {
-      number: withType(parseInt(number, 10)),
-      title: withType(`Season ${number}`),
-      podcast: withType(makeLink(podcast)),
+      number: withLocale(parseInt(number, 10)),
+      title: withLocale(`Season ${number}`),
+      podcast: withLocale(makeLink(podcast)),
     },
   };
   const season = await environment.createEntry('podcastSeason', seasonJson);
@@ -116,7 +119,7 @@ class ContentfulCache {
       contentType,
       {
         fields: {
-          [pk]: withType(pkValue),
+          [pk]: withLocale(pkValue),
         },
       },
     );
@@ -147,11 +150,11 @@ async function syncEpisode(
   );
   const episodeJson = {
     fields: {
-      podbeanEpisodeId: withType(rssItem.guid),
-      title: withType(title),
-      description: withType(description),
-      publishedAt: withType(rssItem.isoDate),
-      podcast: withType(makeLink(podcast)),
+      podbeanEpisodeId: withLocale(rssItem.guid),
+      title: withLocale(title),
+      description: withLocale(description),
+      publishedAt: withLocale(rssItem.isoDate),
+      podcast: withLocale(makeLink(podcast)),
     },
   };
 
@@ -174,14 +177,14 @@ async function syncEpisode(
         const entry = await cache.getOrCreate(contentType, value);
         links.push(makeLink(entry));
       }
-      episodeJson.fields[label] = withType(links);
+      episodeJson.fields[label] = withLocale(links);
     }
   }
 
   function setIfPresent(key, path) {
     const value = _.get(rssItem, path);
     if (value) {
-      episodeJson.fields[key] = withType(value);
+      episodeJson.fields[key] = withLocale(value);
     }
   }
 
@@ -197,14 +200,14 @@ async function syncEpisode(
 
   const seasonEpisodeNumber = _.get(rssItem, 'itunes.episode');
   if (seasonEpisodeNumber) {
-    episodeJson.fields.seasonEpisodeNumber = withType(
+    episodeJson.fields.seasonEpisodeNumber = withLocale(
       parseInt(seasonEpisodeNumber, 10),
     );
   }
 
   const seasonNumber = _.get(rssItem, 'itunes.season');
   if (seasonNumber && seasons[seasonNumber]) {
-    episodeJson.fields.season = withType(makeLink(seasons[seasonNumber]));
+    episodeJson.fields.season = withLocale(makeLink(seasons[seasonNumber]));
   }
 
   if (!existingEpisode) {
@@ -316,7 +319,98 @@ async function syncPodcasts(accessToken, spaceId, environmentId) {
   }
 }
 
-if (require.main === module) {
+async function syncTier(environment, existingTiersById, tier) {
+  let contentfulTier;
+  let tierFields = {
+    patreonId: withLocale(tier.id),
+    title: withLocale(tier.attributes.title),
+    description: withLocale(tier.attributes.description),
+    amountCents: withLocale(tier.attributes.amount_cents),
+    isUnpublished: withLocale(tier.attributes.unpublished_at !== null),
+    isDeleted: withLocale(false),
+  };
+  if (_.has(existingTiersById, tier.id)) {
+    contentfulTier = existingTiersById[tier.id];
+    if (!_.isMatch(contentfulTier.fields, tierFields)) {
+      contentfulTier.fields = {
+        ...contentfulTier.fields,
+        ...tierFields,
+      };
+      contentfulTier = await contentfulTier.update();
+    }
+  } else {
+    contentfulTier = await environment.createEntry('tier', { fields: tierFields });
+  }
+  await contentfulTier.publish();
+  return contentfulTier;
+}
+
+async function markTierDeleted(environment, deletedTier) {
+  deletedTier.fields.isDeleted = withLocale(true);
+  const updatedTier = await deletedTier.update();
+  await updatedTier.publish();
+}
+
+async function syncTiers(
+  accessToken,
+  spaceId,
+  environmentId,
+  patreonCreatorToken,
+  patreonCampaignId,
+) {
+  const contentful = createClient({ accessToken });
+  const space = await contentful.getSpace(spaceId);
+  const environment = await space.getEnvironment(environmentId);
+
+  const campaignUrl = `https://www.patreon.com/api/oauth2/v2/campaigns/${patreonCampaignId}`;
+  const opts = {
+    headers: {
+      authorization: `Bearer ${patreonCreatorToken}`,
+    },
+    params: {
+      'fields[campaign]': 'summary',
+      'include': 'tiers',
+      'fields[tier]': 'title,description,amount_cents,unpublished_at'
+    },
+  };
+  try {
+    console.log(`Fetching ${campaignUrl}`);
+    const res = await axios.get(campaignUrl, opts);
+    console.log('tiers:', JSON.stringify(res.data, null, 2));
+    const tiers = res.data.included;
+
+    const response = await environment.getEntries({
+      content_type: 'tier',
+      limit: 1000,
+    });
+    const existingTiers = response.items;
+    console.log('existingTiers:', JSON.stringify(existingTiers, null, 2));
+    const existingTiersById = _.keyBy(existingTiers, 'fields.patreonId.en-US');
+
+    console.log(`Syncing ${tiers.length} tiers from Patreon`);
+    for (const tier of tiers) {
+      console.log(`- ${tier.attributes.title}`);
+      await syncTier(environment, existingTiersById, tier);
+    }
+
+    const tiersById = _.keyBy(tiers, 'id');
+    const deletedTiers = existingTiers.filter(
+      existingTier => !_.has(tiersById, existingTier.fields.patreonId['en-US'])
+    );
+    if (deletedTiers.length > 0) {
+      console.log(`Marking ${deletedTiers.length} tiers deleted`);
+      for (const deletedTier of deletedTiers) {
+        console.log(`- ${deletedTier.fields.title['en-US']}`);
+        await markTierDeleted(environment, deletedTier);
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+}
+
+async function main() {
   const { argv } = yargs
     .options({
       accessToken: {
@@ -331,16 +425,56 @@ if (require.main === module) {
         describe: 'Contentful environment ID',
         demandOption: true,
       },
+      patreonCreatorToken: {
+        describe: 'Patreon creator token (APIv2)',
+      },
+      patreonCampaignId: {
+        describe: 'Patreon campaign ID',
+      },
+      include: {
+        describe: 'What things to sync',
+        choices: ['tiers', 'podcasts', 'all'],
+        default: 'all',
+      }
     });
 
-  const { accessToken, spaceId, environmentId } = argv;
+  const {
+    accessToken,
+    spaceId,
+    environmentId,
+    patreonCreatorToken,
+    patreonCampaignId,
+    include,
+  } = argv;
 
-  syncPodcasts(accessToken, spaceId, environmentId)
-    .then(() => console.log('Done.'))
-    .catch((err) => {
-      console.error(err);
-      process.exit(1);
-    });
+  try {
+    if (include === 'podcasts' || include === 'all') {
+      await syncPodcasts(accessToken, spaceId, environmentId);
+    }
+    if (include === 'tiers' || include === 'all') {
+      if (!patreonCreatorToken) {
+        throw new Error('Need --patreonCreatorToken when syncing tiers');
+      }
+      if (!patreonCampaignId) {
+        throw new Error('Need --patreonCampaignId when syncing tiers');
+      }
+      await syncTiers(
+        accessToken,
+        spaceId,
+        environmentId,
+        patreonCreatorToken,
+        patreonCampaignId,
+      );
+    }
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log('Done.');
+}
+
+if (require.main === module) {
+  main();
 }
 
 module.exports.handler = async () => {
@@ -352,15 +486,24 @@ module.exports.handler = async () => {
 
   const contentful = await getCreds('contentful');
   const contentfulManagement = await getCreds('contentfulManagement');
-  return syncPodcasts(
-    contentfulManagement.accessToken,
-    contentful.space,
-    contentful.environment,
-  )
-    .then(() => console.log('Done.'))
-    .catch((err) => {
-      console.error(err);
-      Sentry.captureException(err);
-      throw err;
-    });
+  const patreon = await getCreds('patreon');
+  try {
+    await syncTiers(
+      contentfulManagement.accessToken,
+      contentful.space,
+      contentful.environment,
+      patreon.creator_token,
+      patreon.campaign_id,
+    );
+    await syncPodcasts(
+      contentfulManagement.accessToken,
+      contentful.space,
+      contentful.environment,
+    );
+    console.log('Done.');
+  } catch (err) {
+    console.error(err);
+    Sentry.captureException(err);
+    throw err;
+  }
 };

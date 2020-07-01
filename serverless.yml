@@ -70,6 +70,7 @@ functions:
       - http: GET /rss/{proxy+}
       - http: POST /contentful-webhook
       - http: GET /discourse/counts/{proxy+}
+      - http: GET /patron-pledge
   sync:
     handler: src/sync.handler
     timeout: 300
@@ -77,6 +78,9 @@ functions:
       - schedule:
           rate: cron(0 12 * * ? *)   # daily, 8AM EDT
           enabled: ${self:custom.syncEnabled.${self:custom.stage}}
+
+plugins:
+  - serverless-offline
 
 custom:
   service: theliturgists-backend

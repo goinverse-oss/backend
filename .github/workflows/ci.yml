@@ -1,0 +1,21 @@
+name: Unit tests
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Use Node.js 12
+      uses: actions/setup-node@v1
+      with:
+        node-version: 12
+    - run: npm ci
+    - run: npm run test:ci
+      env:
+        CI: true
+    - uses: IgnusG/jest-report-action@v2.3.3
+      if: always() # Run regardless of whether other steps failed
+      with:
+        access-token: ${{ secrets.GITHUB_TOKEN }}

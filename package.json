@@ -3,21 +3,25 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "sync": "sls invoke -f sync",
+    "dev:sync": "node ./src/sync.js",
+    "sync": "sls invoke -f sync -l",
     "lint": "eslint",
     "deploy": "sls deploy",
     "auth-deploy": "npm run auth-sls deploy",
-    "auth-sls": "assume-role theliturgists-deploy serverless"
+    "auth-sls": "assume-role theliturgists-deploy serverless",
+    "test": "jest",
+    "test:ci": "jest --ci --reporters=default --reporters=jest-junit"
   },
   "dependencies": {
     "@hapi/joi": "^15.0.3",
     "@sentry/node": "^5.15.4",
+    "@theliturgists/jsonapi-datastore": "^0.4.0-beta-3",
     "@theliturgists/patreon": "^0.4.1-2",
-    "@theliturgists/patreon-pledge": "^0.2.0",
     "aws-param-store": "^2.1.0",
     "aws-sdk": "^2.399.0",
     "axios": "^0.18.1",
     "body-parser": "^1.18.3",
+    "contentful": "^7.14.4",
     "contentful-management": "^5.7.0",
     "dynamodb": "^1.2.0",
     "express": "^4.16.4",
@@ -36,6 +40,7 @@
     "rss-parser": "^3.7.0",
     "serverless": "^1.42.1",
     "serverless-http": "^1.9.0",
+    "serverless-offline": "^6.4.0",
     "striptags": "^3.1.1",
     "url-parse": "^1.4.7",
     "uuid": "^3.3.2",
@@ -44,6 +49,13 @@
   "devDependencies": {
     "eslint": "^5.13.0",
     "eslint-config-airbnb-base": "^13.1.0",
-    "eslint-plugin-import": "^2.16.0"
+    "eslint-plugin-import": "^2.16.0",
+    "jest": "^26.1.0",
+    "jest-junit": "^11.0.1"
+  },
+  "jest-junit": {
+    "suiteNameTemplate": "{filepath}",
+    "classNameTemplate": "{classname}",
+    "titleTemplate": "{title}"
   }
 }
