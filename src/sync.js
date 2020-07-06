@@ -337,11 +337,12 @@ async function syncTier(environment, existingTiersById, tier) {
         ...tierFields,
       };
       contentfulTier = await contentfulTier.update();
+      await contentfulTier.publish();
     }
   } else {
     contentfulTier = await environment.createEntry('tier', { fields: tierFields });
+    await contentfulTier.publish();
   }
-  await contentfulTier.publish();
   return contentfulTier;
 }
 
