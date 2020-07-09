@@ -28,7 +28,6 @@ module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
         space, environment, accessToken
       });
 
-      // TODO: figure out why the tier isn't getting set
       const data = await client.getEntries({
         content_type: 'tier',
         'fields.patreonId': pledge.reward.id,
@@ -43,7 +42,7 @@ module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
     }
   }
 
-  return new Pledge(tier, podcasts);
+  return new Pledge(patreonUserData, tier, podcasts);
 };
 
 class Pledge {
@@ -53,7 +52,8 @@ class Pledge {
    *   with "pledges" relationship in the "includes"
    *   i.e. fetched from https://patreon.com/api/current_user?include=pledges
    */
-  constructor(tier, podcasts) {
+  constructor(userData, tier, podcasts) {
+    this.userData = userData;
     this.tier = tier;
     this.podcasts = podcasts;
   }
