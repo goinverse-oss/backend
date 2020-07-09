@@ -838,6 +838,8 @@ async function init() {
       async (req, res) => {
         res.json({
           podcasts: req.pledge.getPodcasts(),
+          userData: req.pledge.userData,
+          isPatron: req.pledge.isPatron(),
           canAccessMeditations: req.pledge.canAccessMeditations(),
           canAccessLiturgies: req.pledge.canAccessLiturgies(),
           canListenAdFree: req.pledge.canListenAdFree(),
