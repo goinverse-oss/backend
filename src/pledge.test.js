@@ -11,7 +11,7 @@ describe('Pledge', () => {
         "patronsOnly": true
       }
     };
-    const pledge = new Pledge(null, null);
+    const pledge = new Pledge(null, null, null);
     expect(pledge.isPatron()).toBe(false);
     expect(pledge.canAccessPodcast(podcast)).toBe(false);
     expect(pledge.canAccessMeditations()).toBe(false);
@@ -40,7 +40,7 @@ describe('Pledge', () => {
         [field || predicateName]: allow,
       };
       const tier = { fields };
-      const pledge = new Pledge(tier, []);
+      const pledge = new Pledge(null, tier, []);
       expect(pledge.isPatron()).toBe(true);
       expect(pledge[predicateName]()).toBe(allow);
     });
@@ -58,7 +58,7 @@ describe('Pledge', () => {
       }
     ));
     const tier = {};  // not actually used; just can't be null
-    const pledge = new Pledge(tier, podcasts);
+    const pledge = new Pledge(null, tier, podcasts);
     podcasts.forEach(podcast => {
       expect(pledge.canAccessPodcast(podcast)).toBe(true);
     })
@@ -81,7 +81,7 @@ describe('Pledge', () => {
       }
     };
     const tier = {};  // not actually used; just can't be null
-    const pledge = new Pledge(tier, []);
+    const pledge = new Pledge(null, tier, []);
     expect(pledge.canAccessPodcast(podcast)).toBe(true);
   });
 
@@ -102,7 +102,7 @@ describe('Pledge', () => {
       title: `Podcast ${i}`,
     }));
     const tier = {};  // not actually used; just can't be null
-    const pledge = new Pledge(tier, podcasts);
+    const pledge = new Pledge(null, tier, podcasts);
     expect(pledge.getPodcasts()).toStrictEqual(expectedPodcasts);
   })
 
