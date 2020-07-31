@@ -843,6 +843,7 @@ async function init() {
           canAccessMeditations: req.pledge.canAccessMeditations(),
           canAccessLiturgies: req.pledge.canAccessLiturgies(),
           canListenAdFree: req.pledge.canListenAdFree(),
+          zoomRoomPasscode: req.pledge.zoomRoomPasscode,
         })
       }
     )

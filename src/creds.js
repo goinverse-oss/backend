@@ -33,6 +33,9 @@ const credSpecs = {
     baseUrl: `/${stage}/DISCOURSE_BASE_URL`,
     token: `/${stage}/DISCOURSE_API_TOKEN`,
   },
+  zoom: {
+    zoomRoomPasscode: `/${stage}/ZOOM_ROOM_PASSCODE`,
+  },
 };
 
 module.exports.getCreds = async (name) => {

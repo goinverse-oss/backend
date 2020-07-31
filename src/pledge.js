@@ -10,6 +10,7 @@ module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
   let pledge;
   let tier;
   let podcasts;
+  let zoomRoomPasscode;
 
   if (patreonUserData) {
     const data = new JsonApiDataStore();
@@ -23,6 +24,9 @@ module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
     if (pledges.length > 0) {
       pledge = pledges[0];
 
+      // all patrons have access to the zoom rooms
+      ({ zoomRoomPasscode } = await getCreds('zoom'));
+
       const { space, environment, accessToken } = await getCreds('contentful');
       const client = contentful.createClient({
         space, environment, accessToken
@@ -32,9 +36,7 @@ module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
         content_type: 'tier',
         'fields.patreonId': pledge.reward.id,
       })
-      console.log('data:', data);
       const tiers = data.items;
-      console.log('tiers:', tiers);
       if (tiers.length > 0) {
         tier = tiers[0];
         podcasts = data.includes.Entry;
@@ -42,7 +44,7 @@ module.exports.fetchPledge = async function fetchPledge(patreonUserData) {
     }
   }
 
-  return new Pledge(patreonUserData, tier, podcasts);
+  return new Pledge(patreonUserData, tier, podcasts, zoomRoomPasscode);
 };
 
 class Pledge {
@@ -52,10 +54,11 @@ class Pledge {
    *   with "pledges" relationship in the "includes"
    *   i.e. fetched from https://patreon.com/api/current_user?include=pledges
    */
-  constructor(userData, tier, podcasts) {
+  constructor(userData, tier, podcasts, zoomRoomPasscode) {
     this.userData = userData;
     this.tier = tier;
     this.podcasts = podcasts;
+    this.zoomRoomPasscode = zoomRoomPasscode;
   }
 
   isPatron() {
