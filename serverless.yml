@@ -88,7 +88,8 @@ custom:
   stage: ${opt:stage, self:provider.stage}
   syncEnabled:
     dev: false
-    staging: true
+    staging: false
+    production: true
   dynamodbTables:
     tokens: "${self:custom.service}-${self:custom.namespace}-${self:custom.stage}-tokens"
 
