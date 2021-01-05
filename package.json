@@ -19,7 +19,7 @@
     "@theliturgists/patreon": "^0.4.1-2",
     "aws-param-store": "^2.1.0",
     "aws-sdk": "^2.399.0",
-    "axios": "^0.18.1",
+    "axios": "^0.21.1",
     "body-parser": "^1.18.3",
     "contentful": "^7.14.4",
     "contentful-management": "^5.7.0",
