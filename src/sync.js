@@ -23,8 +23,10 @@ async function getPodcasts(environment) {
     content_type: 'podcast',
   });
 
-  // just the ones with a public feed
-  return response.items.filter(p => _.get(p.fields, 'feedUrl'));
+  // just the published entries with a public feed
+  return response.items.filter(
+    p => (_.get(p.fields, 'feedUrl') && _.get(p.sys, 'publishedAt'))
+  );
 }
 
 async function getSeasons(environment, podcast) {
