@@ -1,6 +1,6 @@
-# The Liturgsts App - Backend
+# Media Catalog Mobile App - Backend
 
-Description forthcoming.
+Description forthcoming, and maybe a better name as well.
 
 ## Podbean Feed Sync
 
@@ -26,12 +26,12 @@ If an edit is made and published without this intermediate step, the
 
 # ...other profiles, maybe
 
-[theliturgists]
+[media-catalog]
 region = us-east-1
 mfa_serial = <arn of your MFA device>
 
-[profile theliturgists-deploy]
-source_profile = theliturgists
+[profile media-catalog-deploy]
+source_profile = media-catalog
 mfa_serial = <arn of your MFA device>
 role_arn = <arn of your deployer role that doesn't require MFA>
 ```
