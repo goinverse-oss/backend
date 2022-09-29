@@ -13,7 +13,7 @@
     "test:ci": "jest --ci --reporters=default --reporters=jest-junit"
   },
   "dependencies": {
-    "@hapi/joi": "^15.0.3",
+    "@hapi/joi": "^15.1.1",
     "@sentry/node": "^5.15.4",
     "@theliturgists/jsonapi-datastore": "^0.4.0-beta-3",
     "@theliturgists/patreon": "^0.4.1-2",
